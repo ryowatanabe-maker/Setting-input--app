@@ -132,3 +132,4 @@ if 'group_data' not in st.session_state:
     st.session_state.group_data = create_initial_group_data()
 if 'confirm_step' not in st.session_state:
     st.session_state.confirm
+
