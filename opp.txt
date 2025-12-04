@@ -1,8 +1,10 @@
 import streamlit as st
 import pandas as pd
 import io
+import numpy as np
 
 # --- 定数設定 ---
+
 # グループタイプの選択肢とそれに対応するチャンネル数/タイプ
 GROUP_TYPES = {
     "調光": "1ch",
@@ -10,12 +12,22 @@ GROUP_TYPES = {
     "Synca": "3ch",
     "Synca Bright": "fresh 3ch"
 }
-# CSVのヘッダー行（3行目まで）
-CSV_HEADER = [
-    ["Zone_Name", "Zone_ID", "Fade", "", "Group_Name", "Group_ID", "Group_Type", "Zone_Name(Link)"],
-    ["ゾーン名", "ゾーンID", "フェード秒", "", "グループ名", "グループID", "グループタイプ", "紐づけるゾーン名"],
-    ["A", "B", "C", "D", "E", "F", "G", "H"]
-]
+
+# CSVの全列数 (setting_data (見本).csv から読み取った列数: 74列)
+NUM_COLS = 74
+
+# CSVのヘッダー行（3行分）をハードコード (74列を維持)
+# ユーザーの要求に従い、添付ファイルの内容に基づき定義
+ROW1 = ['Zone情報', None, None, None, 'Group情報', None, None, None, None, 'Scene情報', None, None, None, None, None, None, None, 'Timetable情報', None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, 'Timetable-schedule情報', None, None, None, None, None, None, None, None, None, 'Timetable期間/特異日情報', None, None, None, None, None, 'センサーパターン情報', None, None, None, None, 'センサータイムテーブル情報', None, None, 'センサータイムテーブル/スケジュール情報', None, None, None, None, None, None, None, None, None, 'センサータイムテーブル期間/特異日情報', None, None, None, None]
+ROW2 = [None] * NUM_COLS
+ROW3_BASE = ['[zone]', '[id]', '[fade]', None, '[group]', '[id]', '[type]', '[zone]', None, '[scene]', '[id]', '[dimming]', '[color]', '[perform]', '[zone]', '[group]', None, '[zone-timetable]', '[id]', '[zone]', '[sun-start-scene]', '[sun-end-scene]', '[time]', '[scene]', '[time]', '[scene]', '[time]', '[scene]', '[time]', '[scene]', '[time]', '[scene]', '[time]', '[scene]', None, '[zone-ts]', '[daily]', '[monday]', '[tuesday]', '[wednesday]', '[thursday]', '[friday]', '[saturday]', '[sunday]', None, '[zone-period]', '[start]', '[end]', '[timetable]', '[zone]', None, '[pattern]', '[id]', '[type]', '[mode]', None, '[sensor-timetable]', '[id]', None, '[sensor-ts]', '[daily]', '[monday]', '[tuesday]', '[wednesday]', '[thursday]', '[friday]', '[saturday]', '[sunday]', None, '[sensor-period]', '[start]', '[end]', '[timetable]', '[group]']
+
+# 念のため74列にパディング
+ROW1 = ROW1[:NUM_COLS] + [None] * (NUM_COLS - len(ROW1))
+ROW3 = ROW3_BASE[:NUM_COLS] + [None] * (NUM_COLS - len(ROW3_BASE))
+
+CSV_HEADER_LIST = [ROW1, ROW2, ROW3]
+
 
 # --- ヘルパー関数 ---
 
@@ -25,7 +37,6 @@ def create_initial_zone_data():
         "ゾーン名": [""],
         "ゾーンID": [4097],
         "フェード秒": [0],
-        "": [""] # D列は区切りとして空欄
     })
 
 def create_initial_group_data():
@@ -40,50 +51,65 @@ def create_initial_group_data():
 def create_csv_output(shop_name, zone_df, group_df):
     """
     ユーザー入力とヘッダー情報から最終的なCSVデータを生成します。
-    - 条件②: 全てＣＳＶデータの4行目から記入されるように対応
+    - 条件②: 全てＣＳＶデータの4行目 (インデックス3) から記入されるように対応
     """
     
-    # ゾーンIDとグループIDを更新（IDが連番になるように）
-    # zone_df.indexは0から始まるため、IDはベースID + index
-    zone_df_processed = zone_df.copy()
-    group_df_processed = group_df.copy()
+    # ----------------------------------------------------
+    # 1. ゾーンIDとグループID、グループタイプを処理
+    # ----------------------------------------------------
+    zone_df_processed = zone_df.copy().reset_index(drop=True)
+    group_df_processed = group_df.copy().reset_index(drop=True)
     
+    # IDの自動連番設定
     zone_df_processed["ゾーンID"] = 4097 + zone_df_processed.index
     group_df_processed["グループID"] = 32769 + group_df_processed.index
     
     # グループタイプからチャンネル情報を取得
-    group_df_processed["Group_Type"] = group_df_processed["グループタイプ"].apply(lambda x: GROUP_TYPES.get(x, ""))
+    group_df_processed["G_OUTPUT"] = group_df_processed["グループタイプ"].apply(lambda x: GROUP_TYPES.get(x, ""))
     
-    # 最終的なDataFrameの結合 (幅を合わせる)
-    # ゾーン情報: A, B, C, D列
-    zone_data = zone_df_processed[["ゾーン名", "ゾーンID", "フェード秒", ""]]
-    zone_data.columns = ["A", "B", "C", "D"] # 列名をA, B, C, Dに仮変更
-    
-    # グループ情報: E, F, G, H列
-    group_data = group_df_processed[["グループ名", "グループID", "Group_Type", "紐づけるゾーン名"]]
-    group_data.columns = ["E", "F", "G", "H"] # 列名をE, F, G, Hに仮変更
+    # ----------------------------------------------------
+    # 2. 74列のデータフレームにマッピング
+    # ----------------------------------------------------
+    max_len = max(len(zone_df_processed), len(group_df_processed))
+    if max_len == 0:
+        # 入力行がない場合は、ヘッダーのみのCSVとする
+        input_data = pd.DataFrame(np.empty((0, NUM_COLS), dtype=object))
+    else:
+        # 入力データ用の空のDataFrameを準備 (4行目以降)
+        input_data = pd.DataFrame(np.nan, index=range(max_len), columns=range(NUM_COLS))
+        
+        # ゾーン情報をマッピング (A, B, C列 -> Index 0, 1, 2)
+        # ゾーン名 (A列: Index 0)
+        input_data.loc[zone_df_processed.index, 0] = zone_df_processed["ゾーン名"]
+        # ゾーンID (B列: Index 1)
+        input_data.loc[zone_df_processed.index, 1] = zone_df_processed["ゾーンID"]
+        # フェード秒 (C列: Index 2)
+        input_data.loc[zone_df_processed.index, 2] = zone_df_processed["フェード秒"]
+        
+        # D列 (Index 3) は空欄(NaN/None)のまま
+        
+        # グループ情報をマッピング (E, F, G, H列 -> Index 4, 5, 6, 7)
+        # グループ名 (E列: Index 4)
+        input_data.loc[group_df_processed.index, 4] = group_df_processed["グループ名"]
+        # グループID (F列: Index 5)
+        input_data.loc[group_df_processed.index, 5] = group_df_processed["グループID"]
+        # グループタイプ (G列: Index 6) - チャンネル情報
+        input_data.loc[group_df_processed.index, 6] = group_df_processed["G_OUTPUT"]
+        # 紐づけるゾーン名 (H列: Index 7)
+        input_data.loc[group_df_processed.index, 7] = group_df_processed["紐づけるゾーン名"]
+        
+        # 全ての列をオブジェクト型にして、CSV出力時に適切に処理されるようにする
+        input_data = input_data.astype(object)
 
-    # 行数が少ない方にNaNを詰める
-    max_len = max(len(zone_data), len(group_data))
+    # ----------------------------------------------------
+    # 3. ヘッダーとデータを結合
+    # ----------------------------------------------------
+    header_df = pd.DataFrame(CSV_HEADER_LIST)
     
-    # 結合用にindexをリセットして長さを揃える
-    zone_data_filled = pd.concat([zone_data, pd.DataFrame(index=range(max_len))]).iloc[:max_len].reset_index(drop=True)
-    group_data_filled = pd.concat([group_data, pd.DataFrame(index=range(max_len))]).iloc[:max_len].reset_index(drop=True)
+    # ヘッダーとデータを結合 (条件②: データは4行目(Index 3)から開始)
+    final_df = pd.concat([header_df, input_data], ignore_index=True)
     
-    # 結合
-    combined_df = pd.concat([zone_data_filled, group_data_filled], axis=1)
-
-    # 4行目以降のデータフレームを準備
-    data_lines = combined_df.rename(columns={"A": "Zone_Name", "B": "Zone_ID", "C": "Fade", "D": "", "E": "Group_Name", "F": "Group_ID", "G": "Group_Type", "H": "Zone_Name(Link)"})
-
-    # ヘッダーとデータを結合
-    header_df = pd.DataFrame(CSV_HEADER)
-    # 列数が一致するように調整
-    header_df.columns = data_lines.columns 
-    
-    final_df = pd.concat([header_df, data_lines], ignore_index=True)
-    
-    # CSVファイル名
+    # ファイル名
     file_name = f"{shop_name}_setting_data.csv"
     
     # CSV文字列を生成 (BOM付きUTF-8でExcelでの文字化けを防ぐ)
@@ -91,10 +117,12 @@ def create_csv_output(shop_name, zone_df, group_df):
     # ヘッダーはすでにDataFrameに含まれているため、header=False
     final_df.to_csv(csv_buffer, index=False, header=False, encoding='utf-8-sig')
     
-    return csv_buffer.getvalue(), file_name, final_df.iloc[3:] # 4行目以降のデータ部分を返す
+    # プレビュー用に4行目以降のデータ部分を返す
+    return csv_buffer.getvalue(), file_name, final_df.iloc[3:]
 
 # --- Streamlit UI ---
 
+st.set_page_config(layout="wide")
 st.title("店舗設定データ作成アプリ ⚙️")
 
 # セッションステートの初期化
@@ -103,141 +131,4 @@ if 'zone_data' not in st.session_state:
 if 'group_data' not in st.session_state:
     st.session_state.group_data = create_initial_group_data()
 if 'confirm_step' not in st.session_state:
-    st.session_state.confirm_step = False
-
-## ① 店舗名を入力
-st.header("1. 店舗名入力")
-shop_name = st.text_input("店舗名を入力してください（必須）", key="shop_name_input")
-output_filename = f"{shop_name}_setting_data.csv"
-
-st.subheader("出力ファイル名: **`{}`**".format(output_filename if shop_name else "店舗名_setting_data.csv"))
-
-st.markdown("---")
-
-## ② ゾーン情報を入力
-st.header("2. ゾーン情報入力")
-st.caption("🚨 B列IDは自動で連番(4097〜)になります。C列フェード秒は0〜3599秒(59分59秒)で設定してください。")
-
-# ゾーンIDの列設定 (表示専用/編集不可)
-zone_id_col = st.column_config.NumberColumn(
-    "ゾーンID (B列)",
-    help="自動で4097から連番になります。",
-    disabled=True,
-    min_value=4097
-)
-
-# フェード秒の列設定 (0〜3599秒の範囲で制限)
-fade_col = st.column_config.NumberColumn(
-    "フェード秒 (C列)",
-    help="0秒〜59分59秒 (3599秒) の間で設定可能です。",
-    min_value=0,
-    max_value=3599,
-    step=1
-)
-
-# st.data_editorでインタラクティブな表を作成 (条件①: +ボタンで行を追加できるように)
-# ゾーン名 (A4以降), フェード (C4以降), ゾーンID (B4以降)
-edited_zone_df = st.data_editor(
-    st.session_state.zone_data,
-    key="zone_editor",
-    use_container_width=True,
-    num_rows="dynamic", # 条件①: +ボタンで行を追加できるように
-    column_config={
-        "ゾーン名": st.column_config.TextColumn("ゾーン名 (A列)"),
-        "ゾーンID": zone_id_col,
-        "フェード秒": fade_col,
-        "": st.column_config.TextColumn("D列（空欄）", disabled=True)
-    }
-)
-
-# セッションステートを更新
-st.session_state.zone_data = edited_zone_df
-
-st.markdown("---")
-
-## ③ グループ情報を入力
-st.header("3. グループ情報入力")
-st.caption("🚨 F列IDは自動で連番(32769〜)になります。G列グループタイプは選択肢に応じてIDが自動で入ります。")
-
-# ゾーン名の選択肢リストを作成
-zone_names = [name for name in edited_zone_df["ゾーン名"].dropna().tolist() if name != ""]
-zone_names.insert(0, "") # 未記入でも可とするため、空欄を先頭に追加
-
-# グループIDの列設定 (表示専用/編集不可)
-group_id_col = st.column_config.NumberColumn(
-    "グループID (F列)",
-    help="自動で32769から連番になります。",
-    disabled=True,
-    min_value=32769
-)
-
-# グループタイプの列設定 (プルダウンで4つから選ぶ)
-group_type_col = st.column_config.SelectboxColumn(
-    "グループタイプ (G列)",
-    help="選択肢に応じてチャンネル情報(1ch, 2ch, 3ch, fresh 3ch)が反映されます。",
-    options=list(GROUP_TYPES.keys())
-)
-
-# 紐づけるゾーン名の列設定 (プルダウンでゾーン名を選択)
-link_zone_col = st.column_config.SelectboxColumn(
-    "紐づけるゾーン名 (H列)",
-    help="2.で入力したゾーン名から選択します。",
-    options=zone_names
-)
-
-# st.data_editorでインタラクティブな表を作成
-# グループ名 (E4以降), グループタイプ (G4以降), 紐づけるゾーン名 (H4以降), グループID (F4以降)
-edited_group_df = st.data_editor(
-    st.session_state.group_data,
-    key="group_editor",
-    use_container_width=True,
-    num_rows="dynamic", # 条件①: +ボタンで行を追加できるように
-    column_config={
-        "グループ名": st.column_config.TextColumn("グループ名 (E列)"),
-        "グループID": group_id_col,
-        "グループタイプ": group_type_col,
-        "紐づけるゾーン名": link_zone_col
-    }
-)
-
-# セッションステートを更新
-st.session_state.group_data = edited_group_df
-
-st.markdown("---")
-
-## 処理実行ボタン
-if st.button("設定データを出力用に準備", type="primary"):
-    if not shop_name:
-        st.error("🚨 **店舗名**を入力してください。")
-    else:
-        st.session_state.csv_data, st.session_state.file_name, st.session_state.preview_df = create_csv_output(
-            shop_name,
-            edited_zone_df.dropna(how='all').reset_index(drop=True), # 全てNaNの行を削除してindexをリセット
-            edited_group_df.dropna(how='all').reset_index(drop=True)
-        )
-        st.session_state.confirm_step = True
-        st.success("出力データの準備ができました。最終確認に進んでください。")
-
-st.markdown("---")
-
-## ③ 最後にこれで合っているか確認してから出力
-if st.session_state.confirm_step:
-    st.header("4. 最終確認と出力 (条件③)")
-    
-    st.subheader(f"✅ 出力ファイル名: **`{st.session_state.file_name}`**")
-
-    st.warning("⚠️ **4行目以降**のデータ（実際に記入される部分）を最終確認してください。")
-    
-    # 4行目以降のデータ部分を表示
-    st.dataframe(
-        st.session_state.preview_df, 
-        use_container_width=True, 
-        hide_index=True
-    )
-
-    st.download_button(
-        label="📥 確認OK！ CSVファイルをダウンロード",
-        data=st.session_state.csv_data,
-        file_name=st.session_state.file_name,
-        mime='text/csv'
-    )
+    st.session_state.confirm
