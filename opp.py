@@ -49,22 +49,36 @@ def create_initial_group_data():
         "紐づけるゾーン名": [""]
     })
 
-def create_csv_output(shop_name, zone_df, group_df):
+def create_initial_scene_data():
+    """シーン情報の初期DataFrameを作成"""
+    return pd.DataFrame({
+        "シーン名": [""],
+        "シーンID": [8193],
+        "調光": [100],
+        "調色": [""] , # K
+        "紐づけるゾーン名": [""],
+        "紐づけるグループ名": [""],
+    })
+
+def create_csv_output(shop_name, zone_df, group_df, scene_df):
     """
     ユーザー入力とヘッダー情報から最終的なCSVデータを生成します。
     - 条件②: 全てＣＳＶデータの4行目 (インデックス3) から記入されるように対応
     """
     
     # ----------------------------------------------------
-    # 1. ゾーンIDとグループID、グループタイプを処理
+    # 1. データのフィルタリングとID/タイプ処理
     # ----------------------------------------------------
-    # 入力データからゾーン名またはグループ名が空欄の行を除外
+    
+    # 有効な行のみをフィルタリング (ゾーン名/グループ名/シーン名が空欄でないもの)
     zone_df_processed = zone_df[zone_df['ゾーン名'].astype(str).str.strip() != ''].copy().reset_index(drop=True)
     group_df_processed = group_df[group_df['グループ名'].astype(str).str.strip() != ''].copy().reset_index(drop=True)
+    scene_df_processed = scene_df[scene_df['シーン名'].astype(str).str.strip() != ''].copy().reset_index(drop=True)
     
     # IDの自動連番設定
     zone_df_processed["ゾーンID"] = 4097 + zone_df_processed.index
     group_df_processed["グループID"] = 32769 + group_df_processed.index
+    scene_df_processed["シーンID"] = 8193 + scene_df_processed.index
     
     # グループタイプからチャンネル情報を取得
     group_df_processed["G_OUTPUT"] = group_df_processed["グループタイプ"].apply(lambda x: GROUP_TYPES.get(x, ""))
@@ -72,31 +86,33 @@ def create_csv_output(shop_name, zone_df, group_df):
     # ----------------------------------------------------
     # 2. 74列のデータフレームにマッピング
     # ----------------------------------------------------
-    max_len = max(len(zone_df_processed), len(group_df_processed))
+    max_len = max(len(zone_df_processed), len(group_df_processed), len(scene_df_processed))
     
-    # 入力データ用のDataFrameを準備 (4行目以降)
+    # 入力データ用の空のDataFrameを準備 (4行目以降)
     input_data = pd.DataFrame(np.nan, index=range(max_len), columns=range(NUM_COLS))
     
     if max_len > 0:
-        # ゾーン情報をマッピング (A, B, C列 -> Index 0, 1, 2)
-        # ゾーン名 (A列: Index 0)
+        # --- ゾーン情報 (Index 0, 1, 2) ---
         input_data.loc[zone_df_processed.index, 0] = zone_df_processed["ゾーン名"]
-        # ゾーンID (B列: Index 1)
         input_data.loc[zone_df_processed.index, 1] = zone_df_processed["ゾーンID"]
-        # フェード秒 (C列: Index 2)
         input_data.loc[zone_df_processed.index, 2] = zone_df_processed["フェード秒"]
+        # Index 3 (D列) は空欄(NaN/None)のまま
         
-        # D列 (Index 3) は空欄(NaN/None)のまま
-        
-        # グループ情報をマッピング (E, F, G, H列 -> Index 4, 5, 6, 7)
-        # グループ名 (E列: Index 4)
+        # --- グループ情報 (Index 4, 5, 6, 7) ---
         input_data.loc[group_df_processed.index, 4] = group_df_processed["グループ名"]
-        # グループID (F列: Index 5)
         input_data.loc[group_df_processed.index, 5] = group_df_processed["グループID"]
-        # グループタイプ (G列: Index 6) - チャンネル情報
         input_data.loc[group_df_processed.index, 6] = group_df_processed["G_OUTPUT"]
-        # 紐づけるゾーン名 (H列: Index 7)
         input_data.loc[group_df_processed.index, 7] = group_df_processed["紐づけるゾーン名"]
+        # Index 8 (I列) は空欄(NaN/None)のまま
+
+        # --- シーン情報 (Index 9, 10, 11, 12, 14, 15) ---
+        input_data.loc[scene_df_processed.index, 9] = scene_df_processed["シーン名"]         # J列 [scene]
+        input_data.loc[scene_df_processed.index, 10] = scene_df_processed["シーンID"]        # K列 [id]
+        input_data.loc[scene_df_processed.index, 11] = scene_df_processed["調光"]            # L列 [dimming]
+        input_data.loc[scene_df_processed.index, 12] = scene_df_processed["調色"]            # M列 [color]
+        # Index 13 (N列 - [perform]) は空欄(NaN/None)のまま
+        input_data.loc[scene_df_processed.index, 14] = scene_df_processed["紐づけるゾーン名"] # O列 [zone]
+        input_data.loc[scene_df_processed.index, 15] = scene_df_processed["紐づけるグループ名"] # P列 [group]
         
         # 全ての列をオブジェクト型にして、CSV出力時に適切に処理されるようにする
         input_data = input_data.astype(object)
@@ -130,7 +146,8 @@ if 'zone_data' not in st.session_state:
     st.session_state.zone_data = create_initial_zone_data()
 if 'group_data' not in st.session_state:
     st.session_state.group_data = create_initial_group_data()
-# エラーの原因となった変数名の修正: 'confirm' -> 'confirm_step'
+if 'scene_data' not in st.session_state:
+    st.session_state.scene_data = create_initial_scene_data()
 if 'confirm_step' not in st.session_state:
     st.session_state.confirm_step = False
 
@@ -143,74 +160,134 @@ st.subheader("出力ファイル名: **`{}`**".format(output_filename if shop_na
 
 st.markdown("---")
 
-## ② ゾーン情報を入力
+# データのフィルタリングと選択肢の作成
+zone_names_raw = st.session_state.zone_data["ゾーン名"].astype(str).str.strip()
+valid_zone_names = zone_names_raw[zone_names_raw != ''].unique().tolist()
+zone_options = [""] + valid_zone_names # ゾーン名選択肢
+
+group_names_raw = st.session_state.group_data["グループ名"].astype(str).str.strip()
+valid_group_names = group_names_raw[group_names_raw != ''].unique().tolist()
+group_options = [""] + valid_group_names # グループ名選択肢
+
+
+# --- 2. ゾーン情報入力 ---
 st.header("2. ゾーン情報入力 (A, B, C列)")
-st.caption("🚨 **B列ID**は自動で連番(4097〜)になります。**C列フェード秒**は0〜3599秒(59分59秒)で設定してください。")
+st.caption("🚨 **B列ID**は自動で連番(**4097〜**)になります。**C列フェード秒**は0〜3599秒(59分59秒)で設定してください。")
 
-# ゾーンIDの列設定 (表示専用/編集不可)
-zone_id_col = st.column_config.NumberColumn(
-    "ゾーンID (B列 - [id])",
-    help="自動で4097から連番になります。",
-    disabled=True,
-    min_value=4097
-)
+zone_id_col = st.column_config.NumberColumn("ゾーンID (B列 - [id])", disabled=True, min_value=4097)
+fade_col = st.column_config.NumberColumn("フェード秒 (C列 - [fade])", min_value=0, max_value=3599, step=1)
 
-# フェード秒の列設定 (0〜3599秒の範囲で制限)
-fade_col = st.column_config.NumberColumn(
-    "フェード秒 (C列 - [fade])",
-    help="0秒〜59分59秒 (3599秒) の間で設定可能です。",
-    min_value=0,
-    max_value=3599,
-    step=1
-)
-
-# st.data_editorでインタラクティブな表を作成 (条件①: +ボタンで行を追加できるように)
 edited_zone_df = st.data_editor(
     st.session_state.zone_data,
     key="zone_editor",
     use_container_width=False,
-    num_rows="dynamic", # 条件①: +ボタンで行を追加できるように
+    num_rows="dynamic", 
     column_config={
         "ゾーン名": st.column_config.TextColumn("ゾーン名 (A列 - [zone])"),
         "ゾーンID": zone_id_col,
         "フェード秒": fade_col
     }
 )
-
-# セッションステートを更新
 st.session_state.zone_data = edited_zone_df.copy()
+st.markdown("---")
+
+
+# --- 3. グループ情報入力 ---
+st.header("3. グループ情報入力 (E, F, G, H列)")
+st.caption("🚨 **F列ID**は自動で連番(**32769〜**)になります。**G列グループタイプ**は選択肢に応じてチャンネル情報が反映されます。")
+
+group_id_col = st.column_config.NumberColumn("グループID (F列 - [id])", disabled=True, min_value=32769)
+group_type_col = st.column_config.SelectboxColumn("グループタイプ (G列 - [type])", options=list(GROUP_TYPES.keys()))
+link_zone_col_group = st.column_config.SelectboxColumn("紐づけるゾーン名 (H列 - [zone])", options=zone_options)
+
+edited_group_df = st.data_editor(
+    st.session_state.group_data,
+    key="group_editor",
+    use_container_width=False,
+    num_rows="dynamic", 
+    column_config={
+        "グループ名": st.column_config.TextColumn("グループ名 (E列 - [group])"),
+        "グループID": group_id_col,
+        "グループタイプ": group_type_col,
+        "紐づけるゾーン名": link_zone_col_group
+    }
+)
+st.session_state.group_data = edited_group_df.copy()
+st.markdown("---")
+
+
+# --- 4. シーン情報入力 ---
+st.header("4. シーン情報入力 (J, K, L, M, O, P列)")
+st.caption("🚨 **K列ID**は自動で連番(**8193〜**)になります。**L列調光**は0〜100%で入力してください。")
+
+scene_id_col = st.column_config.NumberColumn("シーンID (K列 - [id])", disabled=True, min_value=8193)
+dimming_col = st.column_config.NumberColumn("調光 (L列 - [dimming], %)", min_value=0, max_value=100, step=1)
+color_col = st.column_config.TextColumn("調色 (M列 - [color], K)")
+link_zone_col_scene = st.column_config.SelectboxColumn("紐づけるゾーン名 (O列 - [zone])", options=zone_options)
+link_group_col_scene = st.column_config.SelectboxColumn("紐づけるグループ名 (P列 - [group])", options=group_options)
+
+
+edited_scene_df = st.data_editor(
+    st.session_state.scene_data,
+    key="scene_editor",
+    use_container_width=True,
+    num_rows="dynamic", 
+    column_config={
+        "シーン名": st.column_config.TextColumn("シーン名 (J列 - [scene])"),
+        "シーンID": scene_id_col,
+        "調光": dimming_col,
+        "調色": color_col,
+        "紐づけるゾーン名": link_zone_col_scene,
+        "紐づけるグループ名": link_group_col_scene
+    }
+)
+st.session_state.scene_data = edited_scene_df.copy()
 
 st.markdown("---")
 
-## ③ グループ情報を入力
-st.header("3. グループ情報入力 (E, F, G, H列)")
-st.caption("🚨 **F列ID**は自動で連番(32769〜)になります。**G列グループタイプ**は選択肢に応じてチャンネル情報が反映されます。")
+## 最終処理実行ボタン
+if st.button("設定データを出力用に準備", type="primary"):
+    if not shop_name:
+        st.error("🚨 **店舗名**を入力してください。")
+    else:
+        # 処理を実行
+        st.session_state.csv_data, st.session_state.file_name, st.session_state.preview_df = create_csv_output(
+            shop_name,
+            st.session_state.zone_data,
+            st.session_state.group_data,
+            st.session_state.scene_data
+        )
+        st.session_state.confirm_step = True
+        st.success("出力データの準備ができました。最終確認に進んでください。")
 
-# ゾーン名の選択肢リストを作成
-# ゾーン名が入力されている行のみを抽出し、一意なリストを作成
-# NaNや空文字列も考慮してフィルタリング
-zone_names_raw = st.session_state.zone_data["ゾーン名"].astype(str).str.strip()
-zone_names_input = zone_names_raw[zone_names_raw != ''].unique().tolist()
-zone_names = [""] + zone_names_input # 未記入も可とするため、空欄を先頭に追加
+st.markdown("---")
 
-# グループIDの列設定 (表示専用/編集不可)
-group_id_col = st.column_config.NumberColumn(
-    "グループID (F列 - [id])",
-    help="自動で32769から連番になります。",
-    disabled=True,
-    min_value=32769
-)
+## 最後にこれで合っているか確認してから出力
+if st.session_state.confirm_step:
+    st.header("5. 最終確認と出力 (条件③)")
+    
+    st.subheader(f"✅ 出力ファイル名: **`{st.session_state.file_name}`**")
 
-# グループタイプの列設定 (プルダウンで4つから選ぶ)
-group_type_col = st.column_config.SelectboxColumn(
-    "グループタイプ (G列 - [type])",
-    help="選択肢に応じてチャンネル情報(1ch, 2ch, 3ch, fresh 3ch)が反映されます。",
-    options=list(GROUP_TYPES.keys())
-)
+    st.warning("⚠️ **4行目以降**のデータ（実際に記入される部分）を最終確認してください。")
+    
+    # 4行目以降のデータ部分を表示
+    header_row_3 = [str(x) if x is not None and str(x) != 'nan' else '' for x in CSV_HEADER_LIST[2]]
+    
+    preview_df_display = st.session_state.preview_df.copy()
+    
+    # プレビューの列数がヘッダー行3の列数より少ない場合にエラーを避けるための処理
+    if len(preview_df_display.columns) <= len(header_row_3):
+        preview_df_display.columns = header_row_3[:len(preview_df_display.columns)]
+    
+    st.dataframe(
+        preview_df_display, 
+        use_container_width=True, 
+        hide_index=True
+    )
 
-# 紐づけるゾーン名の列設定 (プルダウンでゾーン名を選択)
-link_zone_col = st.column_config.SelectboxColumn(
-    "紐づけるゾーン名 (H列 - [zone])",
-    help="2.で入力したゾーン名から選択します。（未記入可）",
-    options=zone_names
-)
+    st.download_button(
+        label="📥 確認OK！ CSVファイルをダウンロード",
+        data=st.session_state.csv_data,
+        file_name=st.session_state.file_name,
+        mime='text/csv'
+    )
