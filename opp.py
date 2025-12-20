@@ -38,5 +38,11 @@ def make_unique_cols(header_row):
 st.set_page_config(page_title="設定データ作成アプリ", layout="wide")
 st.title("店舗設定データ作成アプリ ⚙️")
 
-# セッションステートの初期化
-if 'zone_df' not in
+# セッションステートの初期化（入力安定化のため）
+if 'zone_df' not in st.session_state:
+    st.session_state.zone_df = pd.DataFrame([{"ゾーン名": "", "フェード秒": 0}])
+if 'group_df' not in st.session_state:
+    st.session_state.group_df = pd.DataFrame([{"グループ名": "", "グループタイプ": "調光", "紐づけるゾーン名": ""}])
+if 'scene_df' not in st.session_state:
+    # 順番: シーン名 -> ゾーン名 -> グループ名 -> 調光 -> 調色
+    st.session_state.scene_df = pd.DataFrame([{"シーン名": "", "紐づけるゾーン名": "", "紐づけるグループ名": "", "調光": 100, "調色": ""}])
