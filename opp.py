@@ -38,57 +38,5 @@ def make_unique_cols(header_row):
 st.set_page_config(page_title="設定データ作成アプリ", layout="wide")
 st.title("店舗設定データ作成アプリ ⚙️")
 
-# セッションステートの初期化（入力が消えないように保持）
-if 'zone_df' not in st.session_state:
-    st.session_state.zone_df = pd.DataFrame([{"ゾーン名": "", "フェード秒": 0}])
-if 'group_df' not in st.session_state:
-    st.session_state.group_df = pd.DataFrame([{"グループ名": "", "グループタイプ": "調光", "紐づけるゾーン名": ""}])
-if 'scene_df' not in st.session_state:
-    # 順番を変更: シーン名 -> ゾーン -> グループ -> 調光 -> 調色
-    st.session_state.scene_df = pd.DataFrame([{"シーン名": "", "紐づけるゾーン名": "", "紐づけるグループ名": "", "調光": 100, "調色": ""}])
-
-# ① 店舗名入力
-st.header("① 店舗名を入力")
-shop_name = st.text_input("店舗名", value="店舗A")
-output_filename = f"{shop_name}_setting_data.csv"
-
-st.divider()
-
-# ② ゾーン情報
-st.header("② ゾーン情報を入力")
-# 入力が消える問題対策：keyを固定し、変更時に即座にsession_stateを更新
-zone_edit = st.data_editor(
-    st.session_state.zone_df, 
-    num_rows="dynamic", 
-    use_container_width=True, 
-    key="zone_editor_key"
-)
-st.session_state.zone_df = zone_edit
-valid_zones = [z for z in zone_edit["ゾーン名"].tolist() if str(z).strip()]
-
-# ③ グループ情報
-st.header("③ グループ情報を入力")
-group_edit = st.data_editor(
-    st.session_state.group_df,
-    num_rows="dynamic",
-    column_config={
-        "グループタイプ": st.column_config.SelectboxColumn(options=list(GROUP_TYPE_MAP.keys())),
-        "紐づけるゾーン名": st.column_config.SelectboxColumn(options=[""] + valid_zones)
-    },
-    use_container_width=True,
-    key="group_editor_key"
-)
-st.session_state.group_df = group_edit
-valid_groups = [g for g in group_edit["グループ名"].tolist() if str(g).strip()]
-
-# グループ名からタイプを引くための辞書（バリデーション用）
-group_to_type = dict(zip(group_edit["グループ名"], group_edit["グループタイプ"]))
-
-# ④ シーン情報
-st.header("④ シーン情報を入力")
-st.caption("※調色は、選択したグループのタイプに合わせて 2700K〜6500K または 1800K〜12000K で入力してください。")
-scene_edit = st.data_editor(
-    st.session_state.scene_df,
-    num_rows="dynamic",
-    column_config={
-        "シーン名": st.column_config.Text
+# セッションステートの初期化
+if 'zone_df' not in
