@@ -13,6 +13,7 @@ GROUP_TYPE_MAP = {
 
 NUM_COLS = 74
 
+# 元のCSVのヘッダー構造を正確に定義
 ROW1 = ['Zone情報', None, None, None, 'Group情報', None, None, None, None, 'Scene情報', None, None, None, None, None, None, None, 'Timetable情報', None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, 'Timetable-schedule情報', None, None, None, None, None, None, None, None, None, 'Timetable期間/特異日情報', None, None, None, None, None, 'センサーパターン情報', None, None, None, None, 'センサータイムテーブル情報', None, None, 'センサータイムテーブル/スケジュール情報', None, None, None, None, None, None, None, None, None, 'センサータイムテーブル期間/特異日情報', None, None, None, None]
 ROW2 = [None] * NUM_COLS
 ROW3 = ['[zone]', '[id]', '[fade]', None, '[group]', '[id]', '[type]', '[zone]', None, '[scene]', '[id]', '[dimming]', '[color]', '[perform]', '[zone]', '[group]', None, '[zone-timetable]', '[id]', '[zone]', '[sun-start-scene]', '[sun-end-scene]', '[time]', '[scene]', '[time]', '[scene]', '[time]', '[scene]', '[time]', '[scene]', '[time]', '[scene]', '[time]', '[scene]', None, '[zone-ts]', '[daily]', '[monday]', '[tuesday]', '[wednesday]', '[thursday]', '[friday]', '[saturday]', '[sunday]', None, '[zone-period]', '[start]', '[end]', '[timetable]', '[zone]', None, '[pattern]', '[id]', '[type]', '[mode]', None, '[sensor-timetable]', '[id]', None, '[sensor-ts]', '[daily]', '[monday]', '[tuesday]', '[wednesday]', '[thursday]', '[friday]', '[saturday]', '[sunday]', None, '[sensor-period]', '[start]', '[end]', '[timetable]', '[group]']
@@ -22,6 +23,7 @@ ROW3 = (ROW3 + [None] * NUM_COLS)[:NUM_COLS]
 CSV_HEADER = [ROW1, ROW2, ROW3]
 
 def make_unique_cols(header_row):
+    """表示エラー回避のため列名をユニーク化"""
     seen = {}
     unique_names = []
     for i, name in enumerate(header_row):
@@ -38,29 +40,13 @@ def make_unique_cols(header_row):
 st.set_page_config(page_title="設定データ作成アプリ", layout="wide")
 st.title("店舗設定データ作成アプリ ⚙️")
 
-# セッションステートの初期化（入力安定化のため）
+# セッションステートの初期化
 if 'zone_df' not in st.session_state:
     st.session_state.zone_df = pd.DataFrame([{"ゾーン名": "", "フェード秒": 0}])
 if 'group_df' not in st.session_state:
     st.session_state.group_df = pd.DataFrame([{"グループ名": "", "グループタイプ": "調光", "紐づけるゾーン名": ""}])
 if 'scene_df' not in st.session_state:
-    # 順番: シーン名 -> ゾーン名 -> グループ名 -> 調光 -> 調色
     st.session_state.scene_df = pd.DataFrame([{"シーン名": "", "紐づけるゾーン名": "", "紐づけるグループ名": "", "調光": 100, "調色": ""}])
 
 # ① 店舗名入力
-st.header("① 店舗名を入力")
-shop_name = st.text_input("店舗名", value="店舗A")
-output_filename = f"{shop_name}_setting_data.csv"
-
-st.divider()
-
-# ② ゾーン情報
-st.header("② ゾーン情報を入力")
-zone_edit = st.data_editor(
-    st.session_state.zone_df, 
-    num_rows="dynamic", 
-    use_container_width=True, 
-    key="zone_editor_v_final"
-)
-st.session_state.zone_df = zone_edit
-valid_zones = [z for z in zone_edit["
+st.header("① 店舗
