@@ -33,7 +33,7 @@ def make_unique_cols(header_row):
 
 # --- 2. Streamlit Config ---
 st.set_page_config(page_title="Setting App", layout="wide")
-st.title("店舗設定データ作成アプリ ⚙️ ⚙️")
+st.title("設定データ作成アプリ ⚙️")
 
 # Session State Initialization
 if 'z_df' not in st.session_state:
@@ -129,4 +129,5 @@ if 'final_df' in st.session_state:
     buf = io.BytesIO()
     st.session_state.final_df.to_csv(buf, index=False, header=False, encoding="utf-8-sig")
     st.download_button("📥 CSVをダウンロード", buf.getvalue(), out_filename, "text/csv")
+
 
