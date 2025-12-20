@@ -1,16 +1,3 @@
-度重なるエラーによりご不便をおかけしており、大変申し訳ございません。
-
-SyntaxError: unterminated string literal は、コピー＆ペーストの際に日本語の文字列が途中で切れてしまい、引用符（"）が閉じられていないために発生しています。
-
-このエラーを完全に防ぐため、日本語（マルチバイト文字）を極力減らした、堅牢な最新コードを作成しました。以下の手順で修正をお願いします。
-
-✅ 修正手順
-現在の opp.py の中身をすべて削除して空にしてください。
-
-以下のコードを最初から最後（140行目付近）まで慎重にコピーして、貼り付けて保存してください。
-
-Python
-
 import streamlit as st
 import pandas as pd
 import io
@@ -143,3 +130,4 @@ if 'out_df' in st.session_state:
     buf = io.BytesIO()
     st.session_state.out_df.to_csv(buf, index=False, header=False, encoding="utf-8-sig")
     st.download_button("📥 Download CSV", buf.getvalue(), output_filename, "text
+
