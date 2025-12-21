@@ -31,12 +31,12 @@ if 'auto_scene_count' not in st.session_state: st.session_state.auto_scene_count
 
 # --- 3. UIセクション ---
 st.header("1. 店舗名入力 🏢")
-shop_name = st.text_input("店舗名", value="") # 初期値を空に変更
+shop_name = st.text_input("店舗名", value="")
 st.divider()
 
 # --- 2. ゾーン登録 ---
 st.header("2. ゾーン登録 🌐")
-with st.form("z_form_v37", clear_on_submit=True):
+with st.form("z_form_v38", clear_on_submit=True):
     col_z1, col_z2 = st.columns(2)
     z_name = col_z1.text_input("ゾーン名")
     z_fade = col_z2.number_input("フェード秒", 0, 60, 0)
@@ -52,7 +52,7 @@ if st.session_state.z_list:
 # --- 3. グループ登録 ---
 st.header("3. グループ登録 💡")
 v_zones = [""] + [z["ゾーン名"] for z in st.session_state.z_list]
-with st.form("g_form_v37", clear_on_submit=True):
+with st.form("g_form_v38", clear_on_submit=True):
     col_g1, col_g2, col_g3 = st.columns(3)
     g_name = col_g1.text_input("グループ名")
     g_type = col_g2.selectbox("タイプ", list(GROUP_TYPE_MAP.keys()))
@@ -77,7 +77,7 @@ if st.session_state.s_list:
     sel_s_idx = st.number_input("編集・削除No", 0, len(st.session_state.s_list), 0)
 else: sel_s_idx = 0
 
-with st.form("s_form_v37"):
+with st.form("s_form_v38"):
     init_s = st.session_state.s_list[sel_s_idx-1] if sel_s_idx > 0 else {"シーン名": "", "紐づけるグループ名": "", "調光": 100, "ケルビン": "", "Syncaカラー": ""}
     c1, c2, c3 = st.columns([2, 2, 1])
     s_name = c1.text_input("シーン名", value=init_s["シーン名"])
@@ -102,7 +102,7 @@ st.divider()
 st.header("5. タイムテーブル作成 ⏳")
 v_scenes = [""] + sorted(list(set([s["シーン名"] for s in st.session_state.s_list])))
 with st.expander("スケジュール自動作成"):
-    with st.form("at_v37"):
+    with st.form("at_v38"):
         ca1, ca2, ca3, ca4 = st.columns(4)
         az, stt, edt, inv = ca1.selectbox("対象ゾーン", v_zones), ca2.text_input("開始", "10:00"), ca3.text_input("終了", "21:00"), ca4.number_input("間隔(分) ※6分以上", 6, 120, 8)
         ascs = []
@@ -123,7 +123,7 @@ with st.expander("スケジュール自動作成"):
             except: st.error("時刻形式が不正です(HH:MM)")
     if st.button("繰り返し用シーン枠を追加"): st.session_state.auto_scene_count += 1; st.rerun()
 
-with st.form("tt_v37"):
+with st.form("tt_v38"):
     ct1, ct2 = st.columns(2)
     tt_n = ct1.text_input("タイムテーブル名", value="通常")
     tt_z = ct2.selectbox("対象ゾーン ", v_zones, index=v_zones.index(st.session_state.get("temp_tt_zone", "")) if st.session_state.get("temp_tt_zone", "") in v_zones else 0)
@@ -134,7 +134,7 @@ with st.form("tt_v37"):
         c_t, c_s = st.columns([1, 2])
         dt = b_slots[i]["time"] if i < len(b_slots) else ""
         ds = b_slots[i]["scene"] if i < len(b_slots) else ""
-        tv, sv = c_t.text_input(f"時間{i+1}", value=dt, key=f"t37_{i}"), c_s.selectbox(f"シーン{i+1}", v_scenes, index=v_scenes.index(ds) if ds in v_scenes else 0, key=f"s37_{i}")
+        tv, sv = c_t.text_input(f"時間{i+1}", value=dt, key=f"t38_{i}"), c_s.selectbox(f"シーン{i+1}", v_scenes, index=v_scenes.index(ds) if ds in v_scenes else 0, key=f"s38_{i}")
         if tv and sv: f_slots.append({"time": tv, "scene": sv})
     if st.form_submit_button("タイムテーブル保存 ✅"):
         st.session_state.tt_list.append({"tt_name": tt_n, "zone": tt_z, "sun_start": ss, "sun_end": se, "slots": f_slots})
@@ -142,24 +142,24 @@ with st.form("tt_v37"):
 
 if st.button("手動スロットを追加 ➕"): st.session_state.tt_slots_count += 1; st.rerun()
 
-# --- タイムテーブル一覧の表示 ---
+# --- タイムテーブル一覧と詳細表示 ---
 if st.session_state.tt_list:
     st.subheader("現在のタイムテーブル一覧 📋")
-    tt_summary = []
-    for i, tt in enumerate(st.session_state.tt_list):
-        tt_summary.append({
-            "No": i + 1,
-            "タイムテーブル名": tt["tt_name"],
-            "対象ゾーン": tt["zone"],
-            "日出": tt["sun_start"],
-            "日没": tt["sun_end"],
-            "登録数": len(tt["slots"])
-        })
-    st.table(pd.DataFrame(tt_summary).set_index('No'))
-    del_tt_idx = st.number_input("タイムテーブル削除No", 0, len(st.session_state.tt_list), 0, key="dtt")
-    if st.button("タイムテーブル削除実行 🗑️") and del_tt_idx > 0:
-        st.session_state.tt_list.pop(del_tt_idx - 1)
-        st.rerun()
+    tt_sum = pd.DataFrame([{"タイムテーブル名": x["tt_name"], "ゾーン": x["zone"], "登録数": len(x["slots"])} for x in st.session_state.tt_list])
+    tt_sum.index += 1
+    st.table(tt_sum)
+    
+    col_v1, col_v2 = st.columns([2, 3])
+    view_idx = col_v1.number_input("詳細を表示 or 削除するNo", 0, len(st.session_state.tt_list), 0, key="view_tt")
+    
+    if view_idx > 0:
+        target_tt = st.session_state.tt_list[view_idx - 1]
+        with st.expander(f"【詳細】{target_tt['tt_name']} のスケジュール内容", expanded=True):
+            st.write(f"**日出:** {target_tt['sun_start']} / **日没:** {target_tt['sun_end']}")
+            st.dataframe(pd.DataFrame(target_tt['slots']), hide_index=True)
+            if st.button("このタイムテーブルを削除 🗑️"):
+                st.session_state.tt_list.pop(view_idx - 1)
+                st.rerun()
 
 st.divider()
 
