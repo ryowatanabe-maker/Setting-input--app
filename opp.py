@@ -78,4 +78,85 @@ with st.form("scene_form", clear_on_submit=False):
     with col4: color = st.text_input("調色(K)")
     
     if st.form_submit_button("このシーンにグループを追加"):
-        if
+        if s_name and target_g:
+            st.session_state.s_list.append({"シーン名": s_name, "紐づけるグループ名": target_g, "紐づけるゾーン名": g_to_zone.get(target_g, ""), "調光": dim, "調色": color})
+            st.toast(f"追加: {s_name}")
+v_scenes = [""] + sorted(list(set([s["シーン名"] for s in st.session_state.s_list if s["シーン名"]])))
+
+st.divider()
+
+# 5. タイムテーブル情報
+st.header("5. タイムテーブル情報の追加")
+with st.expander("タイムテーブル作成フォームを開く"):
+    with st.form("tt_form", clear_on_submit=True):
+        col_t1, col_t2 = st.columns(2)
+        with col_t1: tt_name = st.text_input("タイムテーブル名 (例: 通常, 春)")
+        with col_t2: tt_zone = st.selectbox("対象ゾーン", options=v_zones)
+        
+        st.write("▼ 時間とシーンのスケジュールを設定")
+        slots = []
+        rows = [st.columns(4) for _ in range(3)] # 3行 x 4列 = 12スロット分
+        for i in range(12):
+            with rows[i // 4][i % 4]:
+                t = st.text_input(f"時間 {i+1}", placeholder="9:00", key=f"t_{i}")
+                s = st.selectbox(f"シーン {i+1}", options=v_scenes, key=f"s_{i}")
+                if t and s: slots.append({"time": t, "scene": s})
+        
+        if st.form_submit_button("タイムテーブルをリストに追加"):
+            if tt_name and tt_zone and slots:
+                st.session_state.tt_list.append({"tt_name": tt_name, "zone": tt_zone, "slots": slots})
+                st.success(f"'{tt_name}' を追加しました")
+                st.rerun()
+
+if st.session_state.tt_list:
+    st.subheader("現在のタイムテーブル登録リスト")
+    for tt in st.session_state.tt_list:
+        st.text(f"● {tt['tt_name']} [{tt['zone']}]: " + " / ".join([f"{sl['time']} {sl['scene']}" for sl in tt['slots']]))
+
+if st.button("全データをクリアしてやり直す"):
+    st.session_state.s_list, st.session_state.tt_list = [], []
+    st.rerun()
+
+st.divider()
+
+# --- 4. 出力処理 ---
+if st.button("プレビューを確認してCSV作成", type="primary"):
+    zf_f = z_df[z_df["ゾーン名"] != ""].reset_index(drop=True)
+    gf_f = g_df[g_df["グループ名"] != ""].reset_index(drop=True)
+    sf_f = pd.DataFrame(st.session_state.s_list)
+    tt_f = st.session_state.tt_list
+    
+    # 巨大な行列を作成
+    mat = pd.DataFrame(index=range(max(len(zf_f), len(gf_f), len(sf_f), len(tt_f), 1)), columns=range(NUM_COLS))
+    
+    # 1. ゾーン & グループ
+    for i, r in zf_f.iterrows(): mat.iloc[i, 0:3] = [r["ゾーン名"], 4097+i, r["フェード秒"]]
+    for i, r in gf_f.iterrows(): mat.iloc[i, 4:8] = [r["グループ名"], 32769+i, GROUP_TYPE_MAP.get(r["グループタイプ"], "1ch"), r["紐づけるゾーン名"]]
+    
+    # 2. シーン (ID同期 8193〜)
+    scene_id_db = {}; sid_cnt = 8193
+    if not sf_f.empty:
+        for i, r in sf_f.iterrows():
+            sn = r["シーン名"]
+            if sn not in scene_id_db: scene_id_db[sn] = sid_cnt; sid_cnt += 1
+            mat.iloc[i, 9:16] = [sn, scene_id_db[sn], r["調光"], r["調色"], "", r["紐づけるゾーン名"], r["紐づけるグループ名"]]
+    
+    # 3. タイムテーブル (ID同期 12289〜)
+    for i, tt in enumerate(tt_f):
+        mat.iloc[i, 17:20] = [tt["tt_name"], 12289+i, tt["zone"]]
+        c_idx = 22
+        for slot in tt["slots"]:
+            if c_idx < 196:
+                mat.iloc[i, c_idx] = slot["time"]
+                mat.iloc[i, c_idx+1] = slot["scene"]
+                c_idx += 2
+
+    final_df = pd.concat([pd.DataFrame(CSV_HEADER), mat], ignore_index=True)
+    st.session_state.final_csv = final_df
+    st.write("### プレビュー")
+    st.dataframe(final_df.iloc[3:].dropna(how='all', axis=0), use_container_width=True)
+
+if 'final_csv' in st.session_state:
+    buf = io.BytesIO()
+    st.session_state.final_csv.to_csv(buf, index=False, header=False, encoding="utf-8-sig")
+    st.download_button("📥 CSVダウンロード", buf.getvalue(), f"{shop_name}_setting.csv", "text/csv")
