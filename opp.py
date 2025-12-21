@@ -1,37 +1,24 @@
 import streamlit as st
 import pandas as pd
 import io
-import numpy as np
 
 # --- 1. 定数とヘッダーの定義 ---
-GROUP_TYPE_MAP = {
-    "調光": "1ch",
-    "調光調色": "2ch",
-    "Synca": "3ch",
-    "Synca Bright": "fresh 3ch"
-}
-
+GROUP_TYPE_MAP = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 NUM_COLS = 74
 
-ROW1 = ['Zone情報', None, None, None, 'Group情報', None, None, None, None, 'Scene情報', None, None, None, None, None, None, None, 'Timetable情報', None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, 'Timetable-schedule情報', None, None, None, None, None, None, None, None, None, 'Timetable期間/特異日情報', None, None, None, None, None, 'センサーパターン情報', None, None, None, None, 'センサータイムテーブル情報', None, None, 'センサータイムテーブル/スケジュール情報', None, None, None, None, None, None, None, None, None, 'センサータイムテーブル期間/特異日情報', None, None, None, None]
-ROW2 = [None] * NUM_COLS
-ROW3 = ['[zone]', '[id]', '[fade]', None, '[group]', '[id]', '[type]', '[zone]', None, '[scene]', '[id]', '[dimming]', '[color]', '[perform]', '[zone]', '[group]', None, '[zone-timetable]', '[id]', '[zone]', '[sun-start-scene]', '[sun-end-scene]', '[time]', '[scene]', '[time]', '[scene]', '[time]', '[scene]', '[time]', '[scene]', '[time]', '[scene]', '[time]', '[scene]', None, '[zone-ts]', '[daily]', '[monday]', '[tuesday]', '[wednesday]', '[thursday]', '[friday]', '[saturday]', '[sunday]', None, '[zone-period]', '[start]', '[end]', '[timetable]', '[zone]', None, '[pattern]', '[id]', '[type]', '[mode]', None, '[sensor-timetable]', '[id]', None, '[sensor-ts]', '[daily]', '[monday]', '[tuesday]', '[wednesday]', '[thursday]', '[friday]', '[saturday]', '[sunday]', None, '[sensor-period]', '[start]', '[end]', '[timetable]', '[group]']
-
-ROW1 = (ROW1 + [None] * NUM_COLS)[:NUM_COLS]
-ROW3 = (ROW3 + [None] * NUM_COLS)[:NUM_COLS]
-CSV_HEADER = [ROW1, ROW2, ROW3]
+ROW1 = (['Zone情報', None, None, None, 'Group情報', None, None, None, None, 'Scene情報'] + [None] * 64)[:NUM_COLS]
+ROW3 = (['[zone]', '[id]', '[fade]', None, '[group]', '[id]', '[type]', '[zone]', None, '[scene]', '[id]', '[dimming]', '[color]', '[perform]', '[zone]', '[group]'] + [None] * 58)[:NUM_COLS]
+CSV_HEADER = [ROW1, [None] * NUM_COLS, ROW3]
 
 def make_unique_cols(header_row):
     seen = {}
     unique_names = []
     for i, name in enumerate(header_row):
-        base = str(name) if name and str(name) != 'nan' else "col"
+        base = str(name) if name and str(name) != 'nan' else f"col_{i}"
         if base not in seen:
-            seen[base] = 0
-            unique_names.append(base)
+            seen[base] = 0; unique_names.append(base)
         else:
-            seen[base] += 1
-            unique_names.append(f"{base}_{seen[base]}")
+            seen[base] += 1; unique_names.append(f"{base}_{seen[base]}")
     return unique_names
 
 # --- 2. アプリ設定 ---
@@ -39,143 +26,97 @@ st.set_page_config(page_title="設定データ作成アプリ", layout="wide")
 st.title("設定データ作成アプリ ⚙️")
 
 # セッションステートの初期化
-if 'z_df' not in st.session_state:
-    st.session_state.z_df = pd.DataFrame([{"ゾーン名": "", "フェード秒": 0}])
-if 'g_df' not in st.session_state:
-    st.session_state.g_df = pd.DataFrame([{"グループ名": "", "グループタイプ": "調光", "紐づけるゾーン名": ""}])
-if 's_df' not in st.session_state:
-    st.session_state.s_df = pd.DataFrame([{"シーン名": "", "紐づけるグループ名": "", "紐づけるゾーン名": "", "調光": 100, "調色": ""}])
-if 'scene_master' not in st.session_state:
-    st.session_state.scene_master = [""]
+if 'z_list' not in st.session_state: st.session_state.z_list = []
+if 'g_list' not in st.session_state: st.session_state.g_list = []
+if 's_list' not in st.session_state: st.session_state.s_list = []
+if 'scene_master' not in st.session_state: st.session_state.scene_master = []
 
-# --- 3. UI セクション ---
+# --- 3. UIセクション ---
 
 st.header("1. 店舗名入力")
 shop_name = st.text_input("店舗名", value="店舗A")
-out_filename = f"{shop_name}_setting_data.csv"
 
 st.divider()
 
-# 2. ゾーン情報
+# 2. ゾーン情報 (ここだけは数が少ないのでeditorを維持)
 st.header("2. ゾーン情報")
-z_edit = st.data_editor(st.session_state.z_df, num_rows="dynamic", use_container_width=True, key="z_fix_v15")
-st.session_state.z_df = z_edit
-v_zones = [""] + [str(z).strip() for z in z_edit["ゾーン名"].tolist() if str(z).strip()]
+z_df = st.data_editor(pd.DataFrame(st.session_state.z_list if st.session_state.z_list else [{"ゾーン名": "", "フェード秒": 0}]), num_rows="dynamic", use_container_width=True, key="z_ed")
+v_zones = [""] + [z for z in z_df["ゾーン名"].tolist() if z]
 
 # 3. グループ情報
 st.header("3. グループ情報")
-g_edit = st.data_editor(
-    st.session_state.g_df,
-    num_rows="dynamic",
-    column_config={
-        "グループタイプ": st.column_config.SelectboxColumn(options=list(GROUP_TYPE_MAP.keys())),
-        "紐づけるゾーン名": st.column_config.SelectboxColumn(options=v_zones)
-    },
-    use_container_width=True,
-    key="g_fix_v15"
-)
-st.session_state.g_df = g_edit
-v_groups = [""] + [str(g).strip() for g in g_edit["グループ名"].tolist() if str(g).strip()]
-g_to_zone_map = dict(zip(g_edit["グループ名"], g_edit["紐づけるゾーン名"]))
-g_to_tp_map = dict(zip(g_edit["グループ名"], g_edit["グループタイプ"]))
+g_df = st.data_editor(pd.DataFrame(st.session_state.g_list if st.session_state.g_list else [{"グループ名": "", "グループタイプ": "調光", "紐づけるゾーン名": ""}]), 
+                      column_config={"グループタイプ": st.column_config.SelectboxColumn(options=list(GROUP_TYPE_MAP.keys())), "紐づけるゾーン名": st.column_config.SelectboxColumn(options=v_zones)},
+                      num_rows="dynamic", use_container_width=True, key="g_ed")
+g_to_zone = dict(zip(g_df["グループ名"], g_df["紐づけるゾーン名"]))
+v_groups = [""] + [g for g in g_df["グループ名"].tolist() if g]
 
 st.divider()
 
-# 4. シーン情報
-st.header("4. シーン情報")
-
-with st.expander("シーン名を登録"):
-    new_s = st.text_input("登録するシーン名")
-    if st.button("追加"):
-        if new_s and new_s not in st.session_state.scene_master:
-            st.session_state.scene_master.append(new_s)
+# 4. シーン情報 (入力消失を防ぐためのフォーム形式)
+st.header("4. シーン情報の追加")
+with st.form("scene_form", clear_on_submit=True):
+    col1, col2, col3, col4 = st.columns(4)
+    with col1: s_name = st.text_input("シーン名 (例: 全点灯)")
+    with col2: target_g = st.selectbox("グループ名", options=v_groups)
+    with col3: dim = st.number_input("調光(%)", 0, 100, 100)
+    with col4: color = st.text_input("調色(K)")
+    
+    if st.form_submit_button("シーンを追加する"):
+        if s_name and target_g:
+            new_scene = {
+                "シーン名": s_name,
+                "紐づけるグループ名": target_g,
+                "紐づけるゾーン名": g_to_zone.get(target_g, ""),
+                "調光": dim,
+                "調色": color
+            }
+            st.session_state.s_list.append(new_scene)
+            st.success(f"追加しました: {s_name} - {target_g}")
             st.rerun()
 
-st.caption(f"登録済み: {', '.join(st.session_state.scene_master)}")
-
-# 【重要】入力消失を物理的に防ぐため、session_stateを直接編集せず、ボタンで反映させる方式
-s_edit = st.data_editor(
-    st.session_state.s_df,
-    num_rows="dynamic",
-    column_config={
-        "シーン名": st.column_config.SelectboxColumn("シーン名 (J列)", options=st.session_state.scene_master),
-        "紐づけるグループ名": st.column_config.SelectboxColumn("紐づけるグループ名 (P列)", options=v_groups),
-        "紐づけるゾーン名": st.column_config.SelectboxColumn("紐づけるゾーン名 (O列)", options=v_zones),
-        "調光": st.column_config.NumberColumn("調光 (L列)", min_value=0, max_value=100, format="%d%%")
-    },
-    use_container_width=True,
-    key="s_fix_v15"
-)
-
-# ゾーン自動補完 & 状態同期ボタン
-if st.button("🔄 入力内容を確定してゾーン名を自動補完する"):
-    temp_s = s_edit.copy()
-    for idx in range(len(temp_s)):
-        gn = temp_s.at[idx, "紐づけるグループ名"]
-        if gn in g_to_zone_map:
-            temp_s.at[idx, "紐づけるゾーン名"] = g_to_zone_map[gn]
-    st.session_state.s_df = temp_s
-    st.rerun()
+# 追加されたシーンの確認と削除
+if st.session_state.s_list:
+    st.subheader("現在のシーン登録リスト")
+    current_s_df = pd.DataFrame(st.session_state.s_list)
+    st.table(current_s_df)
+    if st.button("リストをすべてクリア"):
+        st.session_state.s_list = []
+        st.rerun()
 
 st.divider()
 
 # --- 4. 出力処理 ---
-if st.button("プレビューを確認する", type="primary"):
-    # 最新のs_edit内容をセッションに同期
-    st.session_state.s_df = s_edit
+if st.button("プレビューを確認してCSV作成", type="primary"):
+    zf_f = z_df[z_df["ゾーン名"] != ""].reset_index(drop=True)
+    gf_f = g_df[g_df["グループ名"] != ""].reset_index(drop=True)
+    sf_f = pd.DataFrame(st.session_state.s_list)
     
-    zf_f = st.session_state.z_df[st.session_state.z_df["ゾーン名"] != ""].reset_index(drop=True)
-    gf_f = st.session_state.g_df[st.session_state.g_df["グループ名"] != ""].reset_index(drop=True)
-    sf_f = st.session_state.s_df[st.session_state.s_df["シーン名"] != ""].reset_index(drop=True)
-    
-    # バリデーション
-    errs = []
-    for i, r in sf_f.iterrows():
-        gn = r["紐づけるグループ名"]
-        cv = str(r["調色"]).upper().replace("K", "").strip()
-        if gn in g_to_tp_map and cv.isdigit():
-            k = int(cv)
-            tp = g_to_tp_map[gn]
-            if tp == "調光調色" and not (2700 <= k <= 6500):
-                errs.append(f"行{i+1}: {gn}は2700-6500Kで入力してください。")
-            elif tp in ["Synca", "Synca Bright"] and not (1800 <= k <= 12000):
-                errs.append(f"行{i+1}: {gn}は1800-12000Kで入力してください。")
-    
-    if errs:
-        for e in errs: st.error(e)
+    if sf_f.empty:
+        st.warning("シーンが登録されていません。")
     else:
-        # ID同期ロジック (同じシーン名なら同じIDをK列に振る)
-        scene_id_db = {}
-        sid_cnt = 8193
-        
+        # ID同期 (同じ名前なら同じID)
+        scene_id_db = {}; sid_cnt = 8193
         max_r = max(len(zf_f), len(gf_f), len(sf_f))
         mat = pd.DataFrame(index=range(max_r), columns=range(NUM_COLS))
         
         for i, r in zf_f.iterrows():
             mat.iloc[i, 0], mat.iloc[i, 1], mat.iloc[i, 2] = r["ゾーン名"], 4097+i, r["フェード秒"]
         for i, r in gf_f.iterrows():
-            mat.iloc[i, 4], mat.iloc[i, 5], mat.iloc[i, 6], mat.iloc[i, 7] = r["グループ名"], 32769+i, GROUP_TYPE_MAP.get(r["グループタイプ"], ""), r["紐づけるゾーン名"]
+            mat.iloc[i, 4], mat.iloc[i, 5], mat.iloc[i, 6], mat.iloc[i, 7] = r["グループ名"], 32769+i, GROUP_TYPE_MAP.get(r["グループタイプ"], "1ch"), r["紐づけるゾーン名"]
         for i, r in sf_f.iterrows():
             sn = r["シーン名"]
             if sn not in scene_id_db:
                 scene_id_db[sn] = sid_cnt
                 sid_cnt += 1
-            
-            mat.iloc[i, 9] = sn
-            mat.iloc[i, 10] = scene_id_db[sn] # K列 ID同期
-            mat.iloc[i, 11] = r["調光"]
-            mat.iloc[i, 12] = r["調色"]
-            mat.iloc[i, 14] = r["紐づけるゾーン名"]
-            mat.iloc[i, 15] = r["紐づけるグループ名"]
+            mat.iloc[i, 9], mat.iloc[i, 10], mat.iloc[i, 11], mat.iloc[i, 12], mat.iloc[i, 14], mat.iloc[i, 15] = sn, scene_id_db[sn], r["調光"], r["調色"], r["紐づけるゾーン名"], r["紐づけるグループ名"]
 
-        header_df = pd.DataFrame(CSV_HEADER)
-        st.session_state.final_df = pd.concat([header_df, mat], ignore_index=True)
-        st.subheader("5. 最終プレビュー")
-        pdf = st.session_state.final_df.copy()
-        pdf.columns = make_unique_cols(ROW3)
-        st.dataframe(pdf.iloc[3:], hide_index=True)
+        final_df = pd.concat([pd.DataFrame(CSV_HEADER), mat], ignore_index=True)
+        st.session_state.final_csv = final_df
+        st.write("プレビュー (最新のID同期済み)")
+        st.dataframe(final_df.iloc[3:], use_container_width=True)
 
-if 'final_df' in st.session_state:
-    b = io.BytesIO()
-    st.session_state.final_df.to_csv(b, index=False, header=False, encoding="utf-8-sig")
-    st.download_button("📥 CSVダウンロード", b.getvalue(), out_filename, "text/csv")
+if 'final_csv' in st.session_state:
+    buf = io.BytesIO()
+    st.session_state.final_csv.to_csv(buf, index=False, header=False, encoding="utf-8-sig")
+    st.download_button("📥 CSVダウンロード", buf.getvalue(), f"{shop_name}_setting.csv", "text/csv")
