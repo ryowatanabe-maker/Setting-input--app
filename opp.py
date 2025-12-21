@@ -11,7 +11,8 @@ ROW1 = [None] * NUM_COLS
 ROW1[0], ROW1[4], ROW1[9], ROW1[17], ROW1[197], ROW1[207] = 'Zone情報', 'Group情報', 'Scene情報', 'Timetable情報', 'Timetable-schedule情報', 'Timetable期間/特異日情報'
 ROW3 = [None] * NUM_COLS
 ROW3[0:3], ROW3[4:8] = ['[zone]', '[id]', '[fade]'], ['[group]', '[id]', '[type]', '[zone]']
-ROW3[9:17] = ['[scene]', '[id]', '[dimming]', '[color]', '[perform]', '[fresh-key]', '[zone]', '[group]']
+# O列の[fresh-key]を削除し、その分を詰めています
+ROW3[9:16] = ['[scene]', '[id]', '[dimming]', '[color]', '[perform]', '[zone]', '[group]']
 ROW3[17:22] = ['[zone-timetable]', '[id]', '[zone]', '[sun-start-scene]', '[sun-end-scene]']
 for i in range(22, 196, 2): ROW3[i], ROW3[i+1] = '[time]', '[scene]'
 CSV_HEADER = [ROW1, [None] * NUM_COLS, ROW3]
@@ -86,24 +87,23 @@ if st.session_state.s_list:
 else:
     selected_s_idx = 0
 
-init_s = st.session_state.s_list[selected_s_idx-1] if selected_s_idx > 0 else {"シーン名": "", "紐づけるグループ名": "", "調光": 100, "ケルビン": "", "Syncaカラー": "", "FreshKey": ""}
+init_s = st.session_state.s_list[selected_s_idx-1] if selected_s_idx > 0 else {"シーン名": "", "紐づけるグループ名": "", "調光": 100, "ケルビン": "", "Syncaカラー": ""}
 
-with st.form("s_form_v28"):
+with st.form("s_form_v29"):
     c1, c2, c3 = st.columns([2, 2, 1])
     s_name = c1.text_input("シーン名", value=init_s["シーン名"])
     target_g = c2.selectbox("対象グループ", options=v_groups, index=v_groups.index(init_s["紐づけるグループ名"]) if init_s["紐づけるグループ名"] in v_groups else 0)
     dim = c3.number_input("調光(%)", 0, 100, int(init_s["調光"]))
-    cc1, cc2, cc3, cc4 = st.columns([2, 1, 1, 2])
+    cc1, cc2, cc3 = st.columns([2, 1, 1])
     k_val = cc1.text_input("ケルビン", value=init_s["ケルビン"])
     row_val = cc2.selectbox("Synca 行(1-11)", ["-"] + list(range(1, 12)))
     col_val = cc3.selectbox("Synca 列(1-11)", ["-"] + list(range(1, 12)))
-    f_key = cc4.text_input("Fresh Key", value=init_s.get("FreshKey", ""))
     
     col_s_btn1, col_s_btn2 = st.columns([1, 4])
     if col_s_btn1.form_submit_button("保存"):
         if s_name and target_g:
             synca_code = f"'{row_val}-{col_val}" if str(row_val) != "-" and str(col_val) != "-" else ""
-            new_data = {"シーン名": s_name, "紐づけるグループ名": target_g, "紐づけるゾーン名": g_dict[target_g]["紐づけるゾーン名"], "調光": dim, "ケルビン": k_val if not synca_code else "", "Syncaカラー": synca_code, "FreshKey": f_key}
+            new_data = {"シーン名": s_name, "紐づけるグループ名": target_g, "紐づけるゾーン名": g_dict[target_g]["紐づけるゾーン名"], "調光": dim, "ケルビン": k_val if not synca_code else "", "Syncaカラー": synca_code}
             if selected_s_idx == 0: st.session_state.s_list.append(new_data)
             else: st.session_state.s_list[selected_s_idx-1] = new_data
             st.rerun()
@@ -118,7 +118,7 @@ st.header("5. タイムテーブル登録")
 v_scenes = [""] + sorted(list(set([s["シーン名"] for s in st.session_state.s_list])))
 
 # 繰り返し自動生成
-with st.expander("✨ スケジュール自動作成 (複数シーンの繰り返し対応)"):
+with st.expander("✨ スケジュール自動作成 (繰り返しパターン生成)"):
     with st.form("auto_tt"):
         col_a1, col_a2, col_a3, col_a4 = st.columns(4)
         auto_z = col_a1.selectbox("対象ゾーン", options=v_zones)
@@ -126,7 +126,7 @@ with st.expander("✨ スケジュール自動作成 (複数シーンの繰り�
         end_t = col_a3.text_input("終了時間", "21:00")
         interval = col_a4.number_input("間隔(分)", 1, 120, 8)
         
-        st.write("▼ 繰り返すシーンの順番を設定")
+        st.write("▼ 繰り返すシーンの順番")
         auto_scenes = []
         scene_cols = st.columns(4)
         for i in range(st.session_state.auto_scene_count):
@@ -134,8 +134,7 @@ with st.expander("✨ スケジュール自動作成 (複数シーンの繰り�
                 as_val = st.selectbox(f"シーン {i+1}", options=v_scenes, key=f"auto_s_{i}")
                 if as_val: auto_scenes.append(as_val)
         
-        col_auto_btn1, col_auto_btn2 = st.columns([2, 8])
-        if col_auto_btn1.form_submit_button("スケジュールを計算してセット"):
+        if st.form_submit_button("スケジュールを計算してセット"):
             if auto_scenes:
                 try:
                     curr = datetime.strptime(start_t, "%H:%M")
@@ -150,17 +149,16 @@ with st.expander("✨ スケジュール自動作成 (複数シーンの繰り�
                     st.rerun()
                 except: st.error("形式エラー(HH:MM)")
         
-    if st.button("➕ 繰り返しシーンを追加"):
-        st.session_state.auto_scene_count += 1; st.rerun()
+    c_as1, c_as2 = st.columns([1, 10])
+    if c_as1.button("➕ 追加"): st.session_state.auto_scene_count += 1; st.rerun()
     if st.session_state.auto_scene_count > 1:
-        if st.button("➖ シーン枠を減らす"):
-            st.session_state.auto_scene_count -= 1; st.rerun()
+        if c_as2.button("➖ 削減"): st.session_state.auto_scene_count -= 1; st.rerun()
 
 # タイムテーブル本体フォーム
 with st.form("tt_main_form"):
     ct1, ct2 = st.columns(2)
-    tt_name = ct1.text_input("タイムテーブル名 (例: 春)")
-    tt_zone = ct2.selectbox("対象ゾーン", options=v_zones, index=v_zones.index(st.session_state.get("temp_tt_zone", "")) if st.session_state.get("temp_tt_zone", "") in v_zones else 0)
+    tt_name = ct1.text_input("タイムテーブル名")
+    tt_zone = ct2.selectbox("対象ゾーン ", options=v_zones, index=v_zones.index(st.session_state.get("temp_tt_zone", "")) if st.session_state.get("temp_tt_zone", "") in v_zones else 0)
     
     st.write("▼ スケジュール詳細")
     base_data = st.session_state.get("temp_slots", [])
@@ -182,8 +180,7 @@ with st.form("tt_main_form"):
             if "temp_slots" in st.session_state: del st.session_state.temp_slots
             st.rerun()
 
-if st.button("➕ 手動スロットを追加"):
-    st.session_state.tt_slots_count += 1; st.rerun()
+if st.button("➕ 手動スロットを追加"): st.session_state.tt_slots_count += 1; st.rerun()
 
 if st.session_state.tt_list:
     st.subheader("現在のタイムテーブル一覧")
@@ -210,7 +207,8 @@ if st.button("プレビューを確認してCSV作成", type="primary"):
     for i, r in sf_f.iterrows():
         sn = r["シーン名"]
         if sn not in scene_id_db: scene_id_db[sn] = sid_cnt; sid_cnt += 1
-        mat.iloc[i, 9:17] = [sn, scene_id_db[sn], r["調光"], r["ケルビン"], r["Syncaカラー"], r.get("FreshKey",""), r["紐づけるゾーン名"], r["紐づけるグループ名"]]
+        # [scene][id][dimming][color][perform][zone][group]
+        mat.iloc[i, 9:16] = [sn, scene_id_db[sn], r["調光"], r["ケルビン"], r["Syncaカラー"], r["紐づけるゾーン名"], r["紐づけるグループ名"]]
     for i, tt in enumerate(tt_f):
         mat.iloc[i, 17:20] = [tt["tt_name"], 12289+i, tt["zone"]]
         c_idx = 22
