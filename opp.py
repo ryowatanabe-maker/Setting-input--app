@@ -38,123 +38,80 @@ def make_unique_cols(header_row):
 st.set_page_config(page_title="設定データ作成アプリ", layout="wide")
 st.title("設定データ作成アプリ ⚙️")
 
-if 'z_template' not in st.session_state:
-    st.session_state.z_template = pd.DataFrame([{"ゾーン名": "", "フェード秒": 0}])
-if 'g_template' not in st.session_state:
-    st.session_state.g_template = pd.DataFrame([{"グループ名": "", "グループタイプ": "調光", "紐づけるゾーン名": ""}])
-if 's_template' not in st.session_state:
-    # 順番変更: シーン名 -> グループ名 -> ゾーン名
-    st.session_state.s_template = pd.DataFrame([{"シーン名": "", "紐づけるグループ名": "", "紐づけるゾーン名": "", "調光": 100, "調色": ""}])
+# セッションステートの初期化
+if 'z_df' not in st.session_state:
+    st.session_state.z_df = pd.DataFrame([{"ゾーン名": "", "フェード秒": 0}])
+if 'g_df' not in st.session_state:
+    st.session_state.g_df = pd.DataFrame([{"グループ名": "", "グループタイプ": "調光", "紐づけるゾーン名": ""}])
+if 's_df' not in st.session_state:
+    st.session_state.s_df = pd.DataFrame([{"シーン名": "", "紐づけるグループ名": "", "紐づけるゾーン名": "", "調光": 100, "調色": ""}])
+if 'scene_names_master' not in st.session_state:
+    st.session_state.scene_names_master = []
 
-# ① 店舗名入力
+# --- 3. UIセクション ---
+
 st.header("1. 店舗名入力")
 shop_name = st.text_input("店舗名", value="店舗A")
 out_filename = f"{shop_name}_setting_data.csv"
 
 st.divider()
 
-# ② ゾーン情報
 st.header("2. ゾーン情報")
-z_edit = st.data_editor(st.session_state.z_template, num_rows="dynamic", use_container_width=True, key="zone_vFinal")
-v_zones = [str(z).strip() for z in z_edit["ゾーン名"].tolist() if str(z).strip()]
+z_edit = st.data_editor(st.session_state.z_df, num_rows="dynamic", use_container_width=True, key="z_v8")
+st.session_state.z_df = z_edit
+v_zones = [""] + [str(z).strip() for z in z_edit["ゾーン名"].tolist() if str(z).strip()]
 
-# ③ グループ情報
 st.header("3. グループ情報")
 g_edit = st.data_editor(
-    st.session_state.g_template,
+    st.session_state.g_df,
     num_rows="dynamic",
     column_config={
         "グループタイプ": st.column_config.SelectboxColumn(options=list(GROUP_TYPE_MAP.keys())),
-        "紐づけるゾーン名": st.column_config.SelectboxColumn(options=[""] + v_zones)
+        "紐づけるゾーン名": st.column_config.SelectboxColumn(options=v_zones)
     },
     use_container_width=True,
-    key="group_vFinal"
+    key="g_v8"
 )
-v_groups = [str(g).strip() for g in g_edit["グループ名"].tolist() if str(g).strip()]
-
-# グループ名からタイプと、紐づいているゾーン名を取得する辞書を作成
+st.session_state.g_df = g_edit
+v_groups = [""] + [str(g).strip() for g in g_edit["グループ名"].tolist() if str(g).strip()]
 g_to_tp = dict(zip(g_edit["グループ名"], g_edit["グループタイプ"]))
 g_to_zone = dict(zip(g_edit["グループ名"], g_edit["紐づけるゾーン名"]))
 
-# ④ シーン情報
-st.header("4. シーン情報")
-st.caption("【機能】グループ名を選択すると、3番で設定したゾーン名が自動入力されます。")
-
-s_edit = st.data_editor(
-    st.session_state.s_template,
-    num_rows="dynamic",
-    column_config={
-        "紐づけるグループ名": st.column_config.SelectboxColumn(options=[""] + v_groups),
-        "紐づけるゾーン名": st.column_config.SelectboxColumn(options=[""] + v_zones),
-        "調光": st.column_config.NumberColumn(min_value=0, max_value=100, format="%d%%")
-    },
-    use_container_width=True,
-    key="scene_vFinal"
-)
-
-# --- ★自動入力（ゾーン名連動）のロジック ---
-# 編集中のデータにグループ名が入っていて、ゾーン名が空の場合、自動で埋める
-updated_s = False
-for idx in range(len(s_edit)):
-    g_name = s_edit.at[idx, "紐づけるグループ名"]
-    # グループ名が選択されており、かつそのグループに紐づくゾーンがある場合
-    if g_name in g_to_zone:
-        linked_zone = g_to_zone[g_name]
-        # 現在のゾーン名が空、もしくは不一致の場合に自動上書き
-        if s_edit.at[idx, "紐づけるゾーン名"] != linked_zone:
-            s_edit.at[idx, "紐づけるゾーン名"] = linked_zone
-            updated_s = True
-
-if updated_s:
-    st.rerun() # 自動入力後に画面を更新して反映
-
-# --- 5. バリデーションチェック ---
-s_valid_rows = s_edit[s_edit["シーン名"].str.strip() != ""].copy()
-validation_errors = []
-
-for idx, row in s_valid_rows.iterrows():
-    gn = row["紐づけるグループ名"]
-    kv_raw = str(row["調色"]).upper().replace("K", "").strip()
-    
-    if gn in g_to_tp and kv_raw.isdigit():
-        k_val = int(kv_raw)
-        tp = g_to_tp[gn]
-        if tp == "調光調色" and not (2700 <= k_val <= 6500):
-            validation_errors.append(f"❌ {idx+1}行目: {gn}(調光調色)は2700-6500Kで入力してください。")
-        elif tp in ["Synca", "Synca Bright"] and not (1800 <= k_val <= 12000):
-            validation_errors.append(f"❌ {idx+1}行目: {gn}({tp})は1800-12000Kで入力してください。")
-
-if validation_errors:
-    for err in validation_errors:
-        st.error(err)
-
 st.divider()
 
-# --- 6. 実行処理 ---
-if st.button("プレビューを確認する", type="primary"):
-    if validation_errors:
-        st.warning("⚠️ エラーを修正してください。")
-    else:
-        zf = z_edit[z_edit["ゾーン名"].str.strip() != ""].reset_index(drop=True)
-        gf = g_edit[g_edit["グループ名"].str.strip() != ""].reset_index(drop=True)
-        sf = s_valid_rows.reset_index(drop=True)
-        
-        max_r = max(len(zf), len(gf), len(sf))
-        mat = pd.DataFrame(index=range(max_r), columns=range(NUM_COLS))
-        for i, r in zf.iterrows():
-            mat.iloc[i, 0], mat.iloc[i, 1], mat.iloc[i, 2] = r["ゾーン名"], 4097+i, r["フェード秒"]
-        for i, r in gf.iterrows():
-            mat.iloc[i, 4], mat.iloc[i, 5], mat.iloc[i, 6], mat.iloc[i, 7] = r["グループ名"], 32769+i, GROUP_TYPE_MAP.get(r["グループタイプ"], ""), r["紐づけるゾーン名"]
-        for i, r in sf.iterrows():
-            mat.iloc[i, 9], mat.iloc[i, 10], mat.iloc[i, 11], mat.iloc[i, 12], mat.iloc[i, 14], mat.iloc[i, 15] = r["シーン名"], 8193+i, r["調光"], r["調色"], r["紐づけるゾーン名"], r["紐づけるグループ名"]
+st.header("4. シーン情報")
 
-        st.session_state.final_df = pd.concat([pd.DataFrame([ROW1, ROW2, ROW3]), mat], ignore_index=True)
-        st.subheader("5. 最終確認プレビュー")
-        pdf = st.session_state.final_df.copy()
-        pdf.columns = make_unique_cols(ROW3)
-        st.dataframe(pdf.iloc[3:], hide_index=True, use_container_width=True)
+# シーン名マスター登録
+c1, c2 = st.columns([3, 1])
+with c1:
+    new_sn = st.text_input("シーン名を入力して登録してください")
+with c2:
+    if st.button("登録") and new_sn:
+        if new_sn not in st.session_state.scene_names_master:
+            st.session_state.scene_names_master.append(new_sn)
+            st.rerun()
 
-if 'final_df' in st.session_state and not validation_errors:
-    buf = io.BytesIO()
-    st.session_state.final_df.to_csv(buf, index=False, header=False, encoding="utf-8-sig")
-    st.download_button("📥 CSVをダウンロード", buf.getvalue(), out_filename, "text/csv")
+st.caption(f"登録済みシーン名: {', '.join(st.session_state.scene_names_master) if st.session_state.scene_names_master else 'なし'}")
+
+# シーン情報テーブル
+s_edit = st.data_editor(
+    st.session_state.s_df,
+    num_rows="dynamic",
+    column_config={
+        "シーン名": st.column_config.SelectboxColumn("シーン名 (J列)", options=st.session_state.scene_names_master),
+        "紐づけるグループ名": st.column_config.SelectboxColumn("紐づけるグループ名 (P列)", options=v_groups),
+        "紐づけるゾーン名": st.column_config.SelectboxColumn("紐づけるゾーン名 (O列)", options=v_zones),
+        "調光": st.column_config.NumberColumn("調光 (L列)", min_value=0, max_value=100, format="%d%%")
+    },
+    use_container_width=True,
+    key="s_v8"
+)
+
+# 自動入力（グループ名に基づいてゾーン名を補完）
+updated_flag = False
+for i in range(len(s_edit)):
+    curr_g = s_edit.at[i, "紐づけるグループ名"]
+    if curr_g in g_to_zone:
+        target_z = g_to_zone[curr_g]
+        if s_edit.at[i, "紐づけるゾーン名"] != target_z:
+            s_edit.at[i, "紐づけるゾーン名
