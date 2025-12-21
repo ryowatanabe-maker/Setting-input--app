@@ -197,4 +197,47 @@ with col_apply1:
 
 with col_apply2:
     st.subheader("特異日・期間設定 (正月など) 🎌")
-    with st.form("period_v37
+    with st.form("period_v37"):
+        pz = st.selectbox("対象ゾーン ", v_zones)
+        p_tt = st.selectbox("適用タイムテーブル ", v_tt_names)
+        p_start = st.text_input("開始日 (MM/DD)", placeholder="01/01")
+        p_end = st.text_input("終了日 (MM/DD)", placeholder="01/03")
+        if st.form_submit_button("期間設定を保存 ✅"):
+            if pz and p_tt and p_start:
+                st.session_state.period_list.append({"zone": pz, "tt": p_tt, "start": p_start, "end": p_end})
+                st.rerun()
+
+if st.session_state.ts_list or st.session_state.period_list:
+    st.write("▼ 現在の登録一覧")
+    if st.session_state.ts_list: st.table(pd.DataFrame([{"ゾーン": x["zone"], "毎日": x["config"]["daily"]} for x in st.session_state.ts_list]))
+    if st.session_state.period_list: st.table(pd.DataFrame(st.session_state.period_list))
+    if st.button("全設定をクリア 🔄"): st.session_state.ts_list = []; st.session_state.period_list = []; st.rerun()
+
+st.divider()
+
+# --- 7. 出力 ---
+if st.button("プレビューを確認してCSV作成 💾", type="primary"):
+    zf, gf, sf, ttf, tsf, pf = pd.DataFrame(st.session_state.z_list), pd.DataFrame(st.session_state.g_list), pd.DataFrame(st.session_state.s_list), st.session_state.tt_list, st.session_state.ts_list, st.session_state.period_list
+    mat = pd.DataFrame(index=range(max(len(zf), len(gf), len(sf), len(ttf), 100)), columns=range(NUM_COLS))
+    for i, r in zf.iterrows(): mat.iloc[i, 0:3] = [r["ゾーン名"], 4097+i, r["フェード秒"]]
+    for i, r in gf.iterrows(): mat.iloc[i, 4:8] = [r["グループ名"], 32770+i, GROUP_TYPE_MAP.get(r["グループタイプ"], "1ch"), r["紐づけるゾーン名"]]
+    s_db, s_cnt = {}, 8193
+    for i, r in sf.iterrows():
+        sn = r["シーン名"]; s_db[sn] = s_db.get(sn, s_cnt); s_cnt = s_cnt+1 if sn not in s_db else s_cnt
+        mat.iloc[i, 9:16] = [sn, s_db[sn], r["調光"], r["ケルビン"], r["Syncaカラー"], r["紐づけるゾーン名"], r["紐づけるグループ名"]]
+    for i, tt in enumerate(ttf):
+        mat.iloc[i, 17:22] = [tt["tt_name"], 12289+i, tt["zone"], tt["sun_start"], tt["sun_end"]]
+        c_idx = 22
+        for slot in tt["slots"]:
+            if c_idx < 196: mat.iloc[i, c_idx], mat.iloc[i, c_idx+1] = slot["time"], slot["scene"]; c_idx += 2
+    for i, ts in enumerate(tsf):
+        c = ts["config"]
+        mat.iloc[i, 197:206] = [ts["zone"], c["daily"], c["mon"], c["tue"], c["wed"], c["thu"], c["fri"], c["sat"], c["sun"]]
+    for i, p in enumerate(pf):
+        mat.iloc[i, 207:212] = [p["zone"], 16385+i, p["start"], p["end"], p["tt"], p["zone"]]
+
+    final_df = pd.concat([pd.DataFrame(CSV_HEADER), mat], ignore_index=True)
+    st.dataframe(final_df.iloc[3:].dropna(how='all', axis=0), use_container_width=True)
+    buf = io.BytesIO()
+    final_df.to_csv(buf, index=False, header=False, encoding="utf-8-sig")
+    st.download_button("CSVダウンロード 📥", buf.getvalue(), f"{shop_name}_setting.csv", "text/csv")
