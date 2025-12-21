@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import io
-import re
 
 # --- 1. 定数とヘッダーの定義 ---
 GROUP_TYPE_MAP = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
@@ -17,124 +16,99 @@ ROW3[4:8] = ['[group]', '[id]', '[type]', '[zone]']
 ROW3[9:16] = ['[scene]', '[id]', '[dimming]', '[color]', '[perform]', '[zone]', '[group]']
 ROW3[17:22] = ['[zone-timetable]', '[id]', '[zone]', '[sun-start-scene]', '[sun-end-scene]']
 for i in range(22, 196, 2):
-    ROW3[i] = '[time]'
-    ROW3[i+1] = '[scene]'
+    ROW3[i] = '[time]'; ROW3[i+1] = '[scene]'
 ROW3[197:206] = ['[zone-ts]', '[daily]', '[monday]', '[tuesday]', '[wednesday]', '[thursday]', '[friday]', '[saturday]', '[sunday]']
 ROW3[207:212] = ['[zone-period]', '[start]', '[end]', '[timetable]', '[zone]']
 
 CSV_HEADER = [ROW1, [None] * NUM_COLS, ROW3]
 
-def make_unique_cols(header_row):
-    seen = {}
-    unique_names = []
-    for i, name in enumerate(header_row):
-        base = str(name) if name and str(name) != 'nan' else f"col_{i}"
-        if base not in seen:
-            seen[base] = 0; unique_names.append(base)
-        else:
-            seen[base] += 1; unique_names.append(f"{base}_{seen[base]}")
-    return unique_names
-
 # --- 2. アプリ設定 ---
 st.set_page_config(page_title="設定データ作成アプリ", layout="wide")
 st.title("設定データ作成アプリ ⚙️")
 
+# セッション管理
 if 'z_list' not in st.session_state: st.session_state.z_list = []
 if 'g_list' not in st.session_state: st.session_state.g_list = []
 if 's_list' not in st.session_state: st.session_state.s_list = []
 if 'tt_list' not in st.session_state: st.session_state.tt_list = []
 
 # --- 3. UIセクション ---
-
 st.header("1. 店舗名入力")
 shop_name = st.text_input("店舗名", value="店舗A")
 
 st.divider()
 
+# 2. ゾーン情報 (Keyをv19に更新)
 st.header("2. ゾーン情報")
-z_df = st.data_editor(pd.DataFrame(st.session_state.z_list if st.session_state.z_list else [{"ゾーン名": "", "フェード秒": 0}]), num_rows="dynamic", use_container_width=True, key="z_ed_v18")
-st.session_state.z_list = z_df.to_dict('records')
+z_df = st.data_editor(pd.DataFrame(st.session_state.z_list if st.session_state.z_list else [{"ゾーン名": "", "フェード秒": 0}]), 
+                      num_rows="dynamic", use_container_width=True, key="z_ed_v19")
 v_zones = [""] + [z for z in z_df["ゾーン名"].tolist() if z]
 
+# 3. グループ情報 (Keyをv19に更新)
 st.header("3. グループ情報")
 g_df = st.data_editor(pd.DataFrame(st.session_state.g_list if st.session_state.g_list else [{"グループ名": "", "グループタイプ": "調光", "紐づけるゾーン名": ""}]), 
                       column_config={"グループタイプ": st.column_config.SelectboxColumn(options=list(GROUP_TYPE_MAP.keys())), "紐づけるゾーン名": st.column_config.SelectboxColumn(options=v_zones)},
-                      num_rows="dynamic", use_container_width=True, key="g_ed_v18")
-st.session_state.g_list = g_df.to_dict('records')
+                      num_rows="dynamic", use_container_width=True, key="g_ed_v19")
 g_to_zone = dict(zip(g_df["グループ名"], g_df["紐づけるゾーン名"]))
 g_to_type = dict(zip(g_df["グループ名"], g_df["グループタイプ"]))
 v_groups = [""] + [g for g in g_df["グループ名"].tolist() if g]
 
 st.divider()
 
-# 4. シーン情報
+# 4. シーン情報 (フォーム形式をさらに安定化)
 st.header("4. シーン情報の追加")
+st.info("- **調光調色**: 2700〜6500 / **Synca**: 1800〜12000 または A01〜K11")
 
-with st.container():
-    col_input1, col_input2 = st.columns([2, 1])
-    with col_input1:
-        s_name_input = st.text_input("シーン名")
-        target_g_input = st.selectbox("グループ名", options=v_groups)
+with st.form("scene_form_v19", clear_on_submit=False):
+    c1, c2, c3 = st.columns([2, 2, 1])
+    with c1: s_name = st.text_input("シーン名")
+    with c2: target_g = st.selectbox("対象グループ", options=v_groups)
+    with c3: dim = st.number_input("調光(%)", 0, 100, 100)
     
-    g_type = g_to_type.get(target_g_input, "調光")
-    
-    col_dim, col_color = st.columns(2)
-    with col_dim:
-        dim_input = st.number_input("調光(%)", 0, 100, 100)
-    
-    with col_color:
-        final_color_val = ""
-        if g_type == "調光":
-            st.text_input("調色(K)", value="", disabled=True, help="調光タイプは設定不要です")
-        elif g_type == "調光調色":
-            final_color_val = st.text_input("調色(K)", placeholder="2700〜6500")
-            st.caption("2700 〜 6500 (数字のみ)")
-        elif g_type in ["Synca", "Synca Bright"]:
-            synca_mode = st.radio("Synca設定方式", ["ケルビン指定", "カラー(11x11)"], horizontal=True)
-            if synca_mode == "ケルビン指定":
-                final_color_val = st.text_input("調色(K)", placeholder="1800〜12000")
-                st.caption("1800 〜 12000 (数字のみ)")
+    st.write("**調色設定** (選んだグループのタイプに合わせて入力してください)")
+    cc1, cc2, cc3 = st.columns([2, 1, 1])
+    with cc1: 
+        k_val = st.text_input("ケルビン指定 (数字のみ)", placeholder="2700, 5000など")
+    with cc2: 
+        s_row = st.selectbox("Syncaカラー: 行", list("-ABCDEFGHIJK"), index=0)
+    with cc3: 
+        s_col = st.selectbox("Syncaカラー: 列", ["-"] + [f"{i:02}" for i in range(1, 12)], index=0)
+
+    if st.form_submit_button("シーンにグループを追加"):
+        if s_name and target_g:
+            # Syncaカラーが選ばれていればそちらを優先、なければケルビン
+            if s_row != "-" and s_col != "-":
+                final_color = f"{s_row}{s_col}"
             else:
-                # 11x11の座標入力補助
-                col_x, col_y = st.columns(2)
-                with col_x: row_label = st.selectbox("行 (A-K)", list("ABCDEFGHIJK"), index=7) # Hをデフォルトに
-                with col_y: col_num = st.selectbox("列 (01-11)", [f"{i:02}" for i in range(1, 12)], index=0)
-                final_color_val = f"{row_label}{col_num}"
-                st.info(f"選択中のカラーコード: {final_color_val}")
-
-    if st.button("このシーンにグループを追加", type="secondary"):
-        if s_name_input and target_g_input:
+                final_color = k_val
+            
             st.session_state.s_list.append({
-                "シーン名": s_name_input, 
-                "紐づけるグループ名": target_g_input, 
-                "紐づけるゾーン名": g_to_zone.get(target_g_input, ""), 
-                "調光": dim_input, 
-                "調色": final_color_val
+                "シーン名": s_name, "紐づけるグループ名": target_g, 
+                "紐づけるゾーン名": g_to_zone.get(target_g, ""), 
+                "調光": dim, "調色": final_color
             })
-            st.success(f"追加: {s_name_input}")
+            st.toast(f"追加: {s_name}")
         else:
-            st.warning("シーン名とグループ名を入力してください")
-
-v_scenes = [""] + sorted(list(set([s["シーン名"] for s in st.session_state.s_list if s["シーン名"]])))
+            st.warning("名前とグループは必須です")
 
 if st.session_state.s_list:
     st.subheader("登録済みシーン")
     st.dataframe(pd.DataFrame(st.session_state.s_list), use_container_width=True)
     if st.button("シーンを全削除"):
-        st.session_state.s_list = []
-        st.rerun()
+        st.session_state.s_list = []; st.rerun()
+
+v_scenes = [""] + sorted(list(set([s["シーン名"] for s in st.session_state.s_list if s["シーン名"]])))
 
 st.divider()
 
 # 5. タイムテーブル情報
 st.header("5. タイムテーブル情報の追加")
-with st.expander("タイムテーブル作成フォームを開く"):
-    with st.form("tt_form", clear_on_submit=True):
+with st.expander("タイムテーブル作成フォーム"):
+    with st.form("tt_form_v19", clear_on_submit=True):
         col_t1, col_t2 = st.columns(2)
-        with col_t1: tt_name = st.text_input("タイムテーブル名 (例: 通常, 春)")
+        with col_t1: tt_name = st.text_input("タイムテーブル名")
         with col_t2: tt_zone = st.selectbox("対象ゾーン", options=v_zones)
         
-        st.write("▼ 時間とシーンのスケジュール")
         slots = []
         rows = [st.columns(4) for _ in range(3)] 
         for i in range(12):
@@ -146,7 +120,6 @@ with st.expander("タイムテーブル作成フォームを開く"):
         if st.form_submit_button("タイムテーブルを追加"):
             if tt_name and tt_zone and slots:
                 st.session_state.tt_list.append({"tt_name": tt_name, "zone": tt_zone, "slots": slots})
-                st.success(f"'{tt_name}' を追加")
                 st.rerun()
 
 if st.session_state.tt_list:
@@ -156,14 +129,10 @@ if st.session_state.tt_list:
 
 st.divider()
 
-# --- 4. 出力処理 ---
+# --- 出力処理 ---
 if st.button("プレビューを確認してCSV作成", type="primary"):
-    zf_f = pd.DataFrame(st.session_state.z_list)
-    zf_f = zf_f[zf_f["ゾーン名"] != ""].reset_index(drop=True)
-    
-    gf_f = pd.DataFrame(st.session_state.g_list)
-    gf_f = gf_f[gf_f["グループ名"] != ""].reset_index(drop=True)
-    
+    zf_f = pd.DataFrame(z_df[z_df["ゾーン名"] != ""])
+    gf_f = pd.DataFrame(g_df[g_df["グループ名"] != ""])
     sf_f = pd.DataFrame(st.session_state.s_list)
     tt_f = st.session_state.tt_list
     
@@ -184,16 +153,12 @@ if st.button("プレビューを確認してCSV作成", type="primary"):
         c_idx = 22
         for slot in tt["slots"]:
             if c_idx < 196:
-                mat.iloc[i, c_idx] = slot["time"]
-                mat.iloc[i, c_idx+1] = slot["scene"]
-                c_idx += 2
+                mat.iloc[i, c_idx] = slot["time"]; mat.iloc[i, c_idx+1] = slot["scene"]; c_idx += 2
 
     final_df = pd.concat([pd.DataFrame(CSV_HEADER), mat], ignore_index=True)
-    st.session_state.final_csv = final_df
     st.write("### プレビュー")
     st.dataframe(final_df.iloc[3:].dropna(how='all', axis=0), use_container_width=True)
-
-if 'final_csv' in st.session_state:
+    
     buf = io.BytesIO()
-    st.session_state.final_csv.to_csv(buf, index=False, header=False, encoding="utf-8-sig")
+    final_df.to_csv(buf, index=False, header=False, encoding="utf-8-sig")
     st.download_button("📥 CSVダウンロード", buf.getvalue(), f"{shop_name}_setting.csv", "text/csv")
