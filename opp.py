@@ -29,7 +29,6 @@ st.title("設定データ作成アプリ ⚙️")
 if 'z_list' not in st.session_state: st.session_state.z_list = []
 if 'g_list' not in st.session_state: st.session_state.g_list = []
 if 's_list' not in st.session_state: st.session_state.s_list = []
-if 'scene_master' not in st.session_state: st.session_state.scene_master = []
 
 # --- 3. UIセクション ---
 
@@ -38,7 +37,7 @@ shop_name = st.text_input("店舗名", value="店舗A")
 
 st.divider()
 
-# 2. ゾーン情報 (ここだけは数が少ないのでeditorを維持)
+# 2. ゾーン情報
 st.header("2. ゾーン情報")
 z_df = st.data_editor(pd.DataFrame(st.session_state.z_list if st.session_state.z_list else [{"ゾーン名": "", "フェード秒": 0}]), num_rows="dynamic", use_container_width=True, key="z_ed")
 v_zones = [""] + [z for z in z_df["ゾーン名"].tolist() if z]
@@ -49,18 +48,27 @@ g_df = st.data_editor(pd.DataFrame(st.session_state.g_list if st.session_state.g
                       column_config={"グループタイプ": st.column_config.SelectboxColumn(options=list(GROUP_TYPE_MAP.keys())), "紐づけるゾーン名": st.column_config.SelectboxColumn(options=v_zones)},
                       num_rows="dynamic", use_container_width=True, key="g_ed")
 g_to_zone = dict(zip(g_df["グループ名"], g_df["紐づけるゾーン名"]))
+g_to_type = dict(zip(g_df["グループ名"], g_df["グループタイプ"]))
 v_groups = [""] + [g for g in g_df["グループ名"].tolist() if g]
 
 st.divider()
 
 # 4. シーン情報 (入力消失を防ぐためのフォーム形式)
 st.header("4. シーン情報の追加")
+
+# 入力時の注意書きをフォームの前に表示
+st.info("""
+💡 **調色(K)の入力ガイド:**
+- **調光調色**: 2700 〜 6500 (K不要)
+- **Synca / Synca Bright**: 1800 〜 12000 (K不要)
+""")
+
 with st.form("scene_form", clear_on_submit=True):
     col1, col2, col3, col4 = st.columns(4)
     with col1: s_name = st.text_input("シーン名 (例: 全点灯)")
     with col2: target_g = st.selectbox("グループ名", options=v_groups)
     with col3: dim = st.number_input("調光(%)", 0, 100, 100)
-    with col4: color = st.text_input("調色(K)")
+    with col4: color = st.text_input("調色(K) ※数字のみ")
     
     if st.form_submit_button("シーンを追加する"):
         if s_name and target_g:
@@ -95,6 +103,27 @@ if st.button("プレビューを確認してCSV作成", type="primary"):
     if sf_f.empty:
         st.warning("シーンが登録されていません。")
     else:
+        # バリデーションチェック
+        errors = []
+        for i, r in sf_f.iterrows():
+            gn = r["紐づけるグループ名"]
+            g_type = g_to_type.get(gn, "調光")
+            color_val = str(r["調色"]).upper().replace("K", "").strip()
+            
+            if g_type != "調光" and color_val.isdigit():
+                k = int(color_val)
+                if g_type == "調光調色" and not (2700 <= k <= 6500):
+                    errors.append(f"❌ 行{i+1}: 【{gn}】は『調光調色』のため、2700〜6500Kの範囲で入力してください (現在: {k})")
+                elif g_type in ["Synca", "Synca Bright"] and not (1800 <= k <= 12000):
+                    errors.append(f"❌ 行{i+1}: 【{gn}】は『{g_type}』のため、1800〜12000Kの範囲で入力してください (現在: {k})")
+            elif g_type != "調光" and not color_val:
+                 errors.append(f"⚠️ 行{i+1}: 【{gn}】は色設定が必要なタイプですが、調色が空欄です。")
+
+        if errors:
+            for e in errors:
+                st.error(e)
+            st.stop() # エラーがある場合はここで止める
+
         # ID同期 (同じ名前なら同じID)
         scene_id_db = {}; sid_cnt = 8193
         max_r = max(len(zf_f), len(gf_f), len(sf_f))
@@ -113,7 +142,7 @@ if st.button("プレビューを確認してCSV作成", type="primary"):
 
         final_df = pd.concat([pd.DataFrame(CSV_HEADER), mat], ignore_index=True)
         st.session_state.final_csv = final_df
-        st.write("プレビュー (最新のID同期済み)")
+        st.write("### 5. 最終プレビュー (ID同期・範囲チェック完了)")
         st.dataframe(final_df.iloc[3:], use_container_width=True)
 
 if 'final_csv' in st.session_state:
