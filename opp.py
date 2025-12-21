@@ -40,4 +40,105 @@ st.divider()
 # 2. ゾーン情報
 st.header("2. ゾーン情報")
 z_df = st.data_editor(pd.DataFrame(st.session_state.z_list if st.session_state.z_list else [{"ゾーン名": "", "フェード秒": 0}]), num_rows="dynamic", use_container_width=True, key="z_ed")
-v_zones = [""] + [z for z in z
+v_zones = [""] + [z for z in z_df["ゾーン名"].tolist() if z]
+
+# 3. グループ情報
+st.header("3. グループ情報")
+g_df = st.data_editor(pd.DataFrame(st.session_state.g_list if st.session_state.g_list else [{"グループ名": "", "グループタイプ": "調光", "紐づけるゾーン名": ""}]), 
+                      column_config={"グループタイプ": st.column_config.SelectboxColumn(options=list(GROUP_TYPE_MAP.keys())), "紐づけるゾーン名": st.column_config.SelectboxColumn(options=v_zones)},
+                      num_rows="dynamic", use_container_width=True, key="g_ed")
+g_to_zone = dict(zip(g_df["グループ名"], g_df["紐づけるゾーン名"]))
+g_to_type = dict(zip(g_df["グループ名"], g_df["グループタイプ"]))
+v_groups = [""] + [g for g in g_df["グループ名"].tolist() if g]
+
+st.divider()
+
+# 4. シーン情報 (フォーム形式)
+st.header("4. シーン情報の追加")
+
+with st.form("scene_form", clear_on_submit=True):
+    col1, col2, col3, col4 = st.columns(4)
+    with col1: s_name = st.text_input("シーン名")
+    with col2: target_g = st.selectbox("グループ名", options=v_groups)
+    with col3: dim = st.number_input("調光(%)", 0, 100, 100)
+    with col4: color = st.text_input("調色(K)")
+    
+    if st.form_submit_button("シーンを追加する"):
+        if s_name and target_g:
+            new_scene = {
+                "シーン名": s_name,
+                "紐づけるグループ名": target_g,
+                "紐づけるゾーン名": g_to_zone.get(target_g, ""),
+                "調光": dim,
+                "調色": color
+            }
+            st.session_state.s_list.append(new_scene)
+            st.success(f"追加しました: {s_name} - {target_g}")
+            st.rerun()
+
+# 追加されたシーンの確認と削除
+if st.session_state.s_list:
+    st.subheader("現在のシーン登録リスト")
+    current_s_df = pd.DataFrame(st.session_state.s_list)
+    st.table(current_s_df)
+    if st.button("リストをすべてクリア"):
+        st.session_state.s_list = []
+        st.rerun()
+
+st.divider()
+
+# --- 4. 出力処理 ---
+if st.button("プレビューを確認してCSV作成", type="primary"):
+    zf_f = z_df[z_df["ゾーン名"] != ""].reset_index(drop=True)
+    gf_f = g_df[g_df["グループ名"] != ""].reset_index(drop=True)
+    sf_f = pd.DataFrame(st.session_state.s_list)
+    
+    if sf_f.empty:
+        st.warning("シーンが登録されていません。")
+    else:
+        # バリデーションチェック
+        errors = []
+        for i, r in sf_f.iterrows():
+            gn = r["紐づけるグループ名"]
+            g_type = g_to_type.get(gn, "調光")
+            color_val = str(r["調色"]).upper().replace("K", "").strip()
+            
+            if g_type != "調光" and color_val.isdigit():
+                k = int(color_val)
+                if g_type == "調光調色" and not (2700 <= k <= 6500):
+                    errors.append(f"❌ 行{i+1}: 【{gn}】は『調光調色』のため、2700〜6500Kで入力してください (入力値: {k})")
+                elif g_type in ["Synca", "Synca Bright"] and not (1800 <= k <= 12000):
+                    errors.append(f"❌ 行{i+1}: 【{gn}】は『{g_type}』のため、1800〜12000Kで入力してください (入力値: {k})")
+            elif g_type != "調光" and not color_val:
+                 errors.append(f"⚠️ 行{i+1}: 【{gn}】は調色設定が必要なタイプですが、空欄です。")
+
+        if errors:
+            for e in errors:
+                st.error(e)
+            st.stop()
+
+        # ID同期 (同じ名前なら同じID)
+        scene_id_db = {}; sid_cnt = 8193
+        max_r = max(len(zf_f), len(gf_f), len(sf_f))
+        mat = pd.DataFrame(index=range(max_r), columns=range(NUM_COLS))
+        
+        for i, r in zf_f.iterrows():
+            mat.iloc[i, 0], mat.iloc[i, 1], mat.iloc[i, 2] = r["ゾーン名"], 4097+i, r["フェード秒"]
+        for i, r in gf_f.iterrows():
+            mat.iloc[i, 4], mat.iloc[i, 5], mat.iloc[i, 6], mat.iloc[i, 7] = r["グループ名"], 32769+i, GROUP_TYPE_MAP.get(r["グループタイプ"], "1ch"), r["紐づけるゾーン名"]
+        for i, r in sf_f.iterrows():
+            sn = r["シーン名"]
+            if sn not in scene_id_db:
+                scene_id_db[sn] = sid_cnt
+                sid_cnt += 1
+            mat.iloc[i, 9], mat.iloc[i, 10], mat.iloc[i, 11], mat.iloc[i, 12], mat.iloc[i, 14], mat.iloc[i, 15] = sn, scene_id_db[sn], r["調光"], r["調色"], r["紐づけるゾーン名"], r["紐づけるグループ名"]
+
+        final_df = pd.concat([pd.DataFrame(CSV_HEADER), mat], ignore_index=True)
+        st.session_state.final_csv = final_df
+        st.write("### 5. 最終プレビュー")
+        st.dataframe(final_df.iloc[3:], use_container_width=True)
+
+if 'final_csv' in st.session_state:
+    buf = io.BytesIO()
+    st.session_state.final_csv.to_csv(buf, index=False, header=False, encoding="utf-8-sig")
+    st.download_button("📥 CSVダウンロード", buf.getvalue(), f"{shop_name}_setting.csv", "text/csv")
