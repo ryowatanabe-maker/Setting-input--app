@@ -71,3 +71,81 @@ with st.form("scene_form", clear_on_submit=False):
             new_row = {
                 "シーン名": s_name,
                 "紐づけるグループ名": target_g,
+                "紐づけるゾーン名": g_to_zone.get(target_g, ""),
+                "調光": dim,
+                "調色": color
+            }
+            st.session_state.s_list.append(new_row)
+            st.toast(f"追加: {s_name} に {target_g} を紐づけました")
+        else:
+            st.warning("シーン名とグループ名を選択してください")
+
+# リストの表示と削除
+if st.session_state.s_list:
+    st.subheader("現在のシーン登録リスト")
+    current_s_df = pd.DataFrame(st.session_state.s_list)
+    st.dataframe(current_s_df, use_container_width=True)
+    
+    c_btn1, c_btn2 = st.columns(2)
+    with c_btn1:
+        if st.button("最後の1件を削除"):
+            if st.session_state.s_list:
+                st.session_state.s_list.pop()
+                st.rerun()
+    with c_btn2:
+        if st.button("リストを全クリア"):
+            st.session_state.s_list = []
+            st.rerun()
+
+st.divider()
+
+# --- 4. 出力処理 ---
+if st.button("プレビューを確認してCSV作成", type="primary"):
+    zf_f = z_df[z_df["ゾーン名"] != ""].reset_index(drop=True)
+    gf_f = g_df[g_df["グループ名"] != ""].reset_index(drop=True)
+    sf_f = pd.DataFrame(st.session_state.s_list)
+    
+    if sf_f.empty:
+        st.warning("シーンを登録してください。")
+    else:
+        # 範囲バリデーション
+        errors = []
+        for idx, r in sf_f.iterrows():
+            gn = r["紐づけるグループ名"]
+            tp = g_to_type.get(gn, "調光")
+            cv = str(r["調色"]).upper().replace("K", "").strip()
+            if tp != "調光" and cv.isdigit():
+                k_num = int(cv)
+                if tp == "調光調色" and not (2700 <= k_num <= 6500):
+                    errors.append(f"❌ 行{idx+1}: {gn} (2700-6500K)")
+                elif tp in ["Synca", "Synca Bright"] and not (1800 <= k_num <= 12000):
+                    errors.append(f"❌ 行{idx+1}: {gn} (1800-12000K)")
+        
+        if errors:
+            for e in errors: st.error(e)
+            st.stop()
+
+        # ID同期
+        scene_id_map = {}; sid_cnt = 8193
+        max_r = max(len(zf_f), len(gf_f), len(sf_f))
+        mat = pd.DataFrame(index=range(max_r), columns=range(NUM_COLS))
+        
+        for i, r in zf_f.iterrows():
+            mat.iloc[i, 0], mat.iloc[i, 1], mat.iloc[i, 2] = r["ゾーン名"], 4097+i, r["フェード秒"]
+        for i, r in gf_f.iterrows():
+            mat.iloc[i, 4], mat.iloc[i, 5], mat.iloc[i, 6], mat.iloc[i, 7] = r["グループ名"], 32769+i, GROUP_TYPE_MAP.get(r["グループタイプ"], "1ch"), r["紐づけるゾーン名"]
+        for i, r in sf_f.iterrows():
+            name = r["シーン名"]
+            if name not in scene_id_map:
+                scene_id_map[name] = sid_cnt; sid_cnt += 1
+            mat.iloc[i, 9], mat.iloc[i, 10], mat.iloc[i, 11], mat.iloc[i, 12], mat.iloc[i, 14], mat.iloc[i, 15] = name, scene_id_map[name], r["調光"], r["調色"], r["紐づけるゾーン名"], r["紐づけるグループ名"]
+
+        final_df = pd.concat([pd.DataFrame(CSV_HEADER), mat], ignore_index=True)
+        st.session_state.final_csv_v16 = final_df
+        st.write("### 5. 最終プレビュー")
+        st.dataframe(final_df.iloc[3:], use_container_width=True)
+
+if 'final_csv_v16' in st.session_state:
+    buf = io.BytesIO()
+    st.session_state.final_csv_v16.to_csv(buf, index=False, header=False, encoding="utf-8-sig")
+    st.download_button("📥 CSVダウンロード", buf.getvalue(), f"{shop_name}_setting.csv", "text/csv")
