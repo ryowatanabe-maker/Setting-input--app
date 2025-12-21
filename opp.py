@@ -44,6 +44,7 @@ if 'z_df' not in st.session_state:
 if 'g_df' not in st.session_state:
     st.session_state.g_df = pd.DataFrame([{"グループ名": "", "グループタイプ": "調光", "紐づけるゾーン名": ""}])
 if 's_df' not in st.session_state:
+    # 順番: シーン名 -> 紐づけるグループ名 -> 紐づけるゾーン名
     st.session_state.s_df = pd.DataFrame([{"シーン名": "", "紐づけるグループ名": "", "紐づけるゾーン名": "", "調光": 100, "調色": ""}])
 if 'scene_master' not in st.session_state:
     st.session_state.scene_master = [""]
@@ -58,7 +59,7 @@ st.divider()
 
 # 2. ゾーン情報
 st.header("2. ゾーン情報")
-z_edit = st.data_editor(st.session_state.z_df, num_rows="dynamic", use_container_width=True, key="z_edit_final")
+z_edit = st.data_editor(st.session_state.z_df, num_rows="dynamic", use_container_width=True, key="z_edit_v11")
 st.session_state.z_df = z_edit
 v_zones = [""] + [str(z).strip() for z in z_edit["ゾーン名"].tolist() if str(z).strip()]
 
@@ -72,12 +73,12 @@ g_edit = st.data_editor(
         "紐づけるゾーン名": st.column_config.SelectboxColumn(options=v_zones)
     },
     use_container_width=True,
-    key="g_edit_final"
+    key="g_edit_v11"
 )
 st.session_state.g_df = g_edit
 v_groups = [""] + [str(g).strip() for g in g_edit["グループ名"].tolist() if str(g).strip()]
-g_to_zone = dict(zip(g_edit["グループ名"], g_edit["紐づけるゾーン名"]))
-g_to_tp = dict(zip(g_edit["グループ名"], g_edit["グループタイプ"]))
+g_to_zone_dict = dict(zip(g_edit["グループ名"], g_edit["紐づけるゾーン名"]))
+g_to_tp_dict = dict(zip(g_edit["グループ名"], g_edit["グループタイプ"]))
 
 st.divider()
 
@@ -92,46 +93,7 @@ with st.expander("シーン名を追加・管理"):
             st.session_state.scene_master.append(new_s)
             st.rerun()
 
+st.caption(f"登録済みシーン名: {', '.join(st.session_state.scene_master)}")
+
 # シーン情報の表示と編集
-# 編集安定化のため、グループ名に基づいてゾーン名を埋める処理は、あえて「プレビュー」ボタン押下時に一括で行うように変更しました。
-s_edit = st.data_editor(
-    st.session_state.s_df,
-    num_rows="dynamic",
-    column_config={
-        "シーン名": st.column_config.SelectboxColumn("シーン名 (J列)", options=st.session_state.scene_master),
-        "紐づけるグループ名": st.column_config.SelectboxColumn("紐づけるグループ名 (P列)", options=v_groups),
-        "紐づけるゾーン名": st.column_config.SelectboxColumn("紐づけるゾーン名 (O列)", options=v_zones),
-        "調光": st.column_config.NumberColumn("調光 (L列)", min_value=0, max_value=100, format="%d%%")
-    },
-    use_container_width=True,
-    key="s_edit_final"
-)
-st.session_state.s_df = s_edit
-
-st.divider()
-
-# --- 4. 実行処理 ---
-if st.button("プレビューを確認する", type="primary"):
-    # プレビュー時に自動的にゾーン名を補完する
-    for i, row in s_edit.iterrows():
-        g_val = row["紐づけるグループ名"]
-        if g_val in g_to_zone:
-            z_val = g_to_zone[g_val]
-            # ゾーン名が設定済みゾーン名と異なる場合のみ更新
-            if s_edit.at[i, "紐づけるゾーン名"] != z_val:
-                s_edit.at[i, "紐づけるゾーン名"] = z_val
-
-    zf_f = z_edit[z_edit["ゾーン名"] != ""].reset_index(drop=True)
-    gf_f = g_edit[g_edit["グループ名"] != ""].reset_index(drop=True)
-    sf_f = s_edit[s_edit["シーン名"] != ""].reset_index(drop=True)
-    
-    # 調色の範囲バリデーション
-    errs = []
-    for idx, r in sf_f.iterrows():
-        gn = r["紐づけるグループ名"]
-        color_raw = str(r["調色"]).upper().replace("K", "").strip()
-        if gn in g_to_tp and color_raw.isdigit():
-            k = int(color_raw)
-            tp = g_to_tp[gn]
-            if tp == "調光調色" and not (2700 <= k <= 6500):
-                errs.append(f"シーン行{idx+1}: {gn}は『調光調色』のため2700-650
+s_edit = st.data_editor
