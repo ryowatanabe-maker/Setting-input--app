@@ -15,7 +15,6 @@ ROW3[9:16] = ['[scene]', '[id]', '[dimming]', '[color]', '[perform]', '[zone]', 
 ROW3[17:22] = ['[zone-timetable]', '[id]', '[zone]', '[sun-start-scene]', '[sun-end-scene]']
 for i in range(22, 196, 2): ROW3[i], ROW3[i+1] = '[time]', '[scene]'
 ROW3[197:206] = ['[zone-ts]', '[daily]', '[monday]', '[tuesday]', '[wednesday]', '[thursday]', '[friday]', '[saturday]', '[sunday]']
-# 特異日セクションを赤池店の構造に修正
 ROW3[207:212] = ['[zone-period]', '[start]', '[end]', '[timetable]', '[zone]']
 
 CSV_HEADER = [ROW1, [None] * NUM_COLS, ROW3]
@@ -37,7 +36,7 @@ st.divider()
 
 # 2. ゾーン登録
 st.header("2. ゾーン登録 🌐")
-with st.form("z_form_v42", clear_on_submit=True):
+with st.form("z_form_v43", clear_on_submit=True):
     col_z1, col_z2 = st.columns(2)
     z_name = col_z1.text_input("ゾーン名")
     z_fade = col_z2.number_input("フェード秒", 0, 60, 0)
@@ -53,7 +52,7 @@ if st.session_state.z_list:
 # 3. グループ登録
 st.header("3. グループ登録 💡")
 v_zones = [""] + [z["ゾーン名"] for z in st.session_state.z_list]
-with st.form("g_form_v42", clear_on_submit=True):
+with st.form("g_form_v43", clear_on_submit=True):
     col_g1, col_g2, col_g3 = st.columns(3)
     g_name = col_g1.text_input("グループ名")
     g_type = col_g2.selectbox("タイプ", list(GROUP_TYPE_MAP.keys()))
@@ -75,7 +74,7 @@ if st.session_state.s_list:
     sel_s_idx = st.number_input("編集・削除No", 0, len(st.session_state.s_list), 0)
 else: sel_s_idx = 0
 
-with st.form("s_form_v42"):
+with st.form("s_form_v43"):
     init_s = st.session_state.s_list[sel_s_idx-1] if sel_s_idx > 0 else {"シーン名": "", "紐づけるグループ名": "", "調光": 100, "ケルビン": "", "Syncaカラー": ""}
     c1, c2, c3 = st.columns([2, 2, 1])
     s_n, t_g, dim = c1.text_input("シーン名", value=init_s["シーン名"]), c2.selectbox("対象グループ", v_groups, index=v_groups.index(init_s["紐づけるグループ名"]) if init_s["紐づけるグループ名"] in v_groups else 0), c3.number_input("調光(%)", 0, 100, int(init_s["調光"]))
@@ -84,7 +83,7 @@ with st.form("s_form_v42"):
     if st.form_submit_button("シーン保存 ✅"):
         if s_n and t_g:
             g_tp = g_dict[t_g]["グループタイプ"]
-            sc = f"'{r_v}-{c_v}" if str(r_v) != "-" and str(c_v) != "-" else ""
+            sc = f"'{r_v}-{c_v}" if str(r_v) != "-" and str(col_v) != "-" else ""
             new_s = {"シーン名": s_n, "紐づけるグループ名": t_g, "紐づけるゾーン名": g_dict[t_g]["紐づけるゾーン名"], "調光": dim, "ケルビン": "" if g_tp == "調光" else (k_i if not sc else ""), "Syncaカラー": sc if g_tp in ["Synca", "Synca Bright"] else ""}
             if sel_s_idx == 0: st.session_state.s_list.append(new_s)
             else: st.session_state.s_list[sel_s_idx-1] = new_s
@@ -96,7 +95,7 @@ st.divider()
 st.header("5. タイムテーブル作成 ⏳")
 v_scenes = [""] + sorted(list(set([s["シーン名"] for s in st.session_state.s_list])))
 with st.expander("スケジュール自動作成"):
-    with st.form("at_v42"):
+    with st.form("at_v43"):
         ca1, ca2, ca3, ca4 = st.columns(4)
         az, stt, edt, inv = ca1.selectbox("対象ゾーン", v_zones), ca2.text_input("開始", "10:00"), ca3.text_input("終了", "21:00"), ca4.number_input("間隔(分) ※6分以上", 6, 120, 8)
         ascs = []
@@ -117,7 +116,7 @@ with st.expander("スケジュール自動作成"):
             except: st.error("時刻形式エラー")
     if st.button("枠追加 ➕"): st.session_state.auto_scene_count += 1; st.rerun()
 
-with st.form("tt_v42"):
+with st.form("tt_v43"):
     ct1, ct2 = st.columns(2)
     tt_n, tt_z = ct1.text_input("タイムテーブル名", value="通常"), ct2.selectbox("対象ゾーン ", v_zones, index=v_zones.index(st.session_state.get("temp_tt_zone", "")) if st.session_state.get("temp_tt_zone", "") in v_zones else 0)
     cs1, cs2 = st.columns(2)
@@ -152,7 +151,7 @@ v_tt_names = [""] + list(tt_to_zone.keys())
 col_a1, col_a2 = st.columns(2)
 with col_a1:
     st.subheader("通常スケジュール設定 📅")
-    with st.form("ts_form_v42"):
+    with st.form("ts_form_v43"):
         mode = st.radio("設定方法", ["毎日一括(daily)", "曜日を指定して登録"])
         target_tt = st.selectbox("適用するタイムテーブル", v_tt_names)
         checked_days = []
@@ -176,8 +175,7 @@ with col_a1:
 
 with col_a2:
     st.subheader("特異日・期間設定 🎌")
-    with st.form("period_form_v42"):
-        # 特異日名（期間名）の入力欄を追加
+    with st.form("period_form_v43"):
         p_name = st.text_input("特異日名（例：正月、GW）", value="")
         pt = st.selectbox("適用するタイムテーブル ", v_tt_names)
         ps, pe = st.text_input("開始(MM/DD)", "01/01"), st.text_input("終了(MM/DD)", "01/03")
@@ -197,7 +195,13 @@ if st.session_state.ts_list or st.session_state.period_list:
     if st.session_state.period_list:
         st.write("**特異日設定**")
         st.table(pd.DataFrame(st.session_state.period_list).rename(columns={"name":"特異日名", "zone":"ゾーン", "tt":"タイムテーブル", "start":"開始日", "end":"終了日"}))
-    if st.button("全設定クリア 🔄"): st.session_state.ts_list = []; st.session_state.period_list = []; st.rerun()
+    
+    # ボタン名の変更と注釈の追加
+    st.caption("※下のボタンは、上記スケジュール（適用・特異日）の登録のみをリセットします。ゾーンやグループ設定は消えません。")
+    if st.button("スケジュールの割り当てをリセット 🔄", use_container_width=True): 
+        st.session_state.ts_list = []
+        st.session_state.period_list = []
+        st.rerun()
 
 st.divider()
 
@@ -219,7 +223,6 @@ if st.button("プレビューを確認してCSV作成 💾", type="primary"):
     for i, ts in enumerate(tsf):
         c = ts["config"]
         mat.iloc[i, 197:206] = [ts["zone"], c["daily"], c["mon"], c["tue"], c["wed"], c["thu"], c["fri"], c["sat"], c["sun"]]
-    # 特異日出力 (赤池店フォーマット: [特異日名], [開始], [終了], [タイムテーブル], [ゾーン])
     for i, p in enumerate(pf):
         mat.iloc[i, 207:212] = [p["name"], p["start"], p["end"], p["tt"], p["zone"]]
 
