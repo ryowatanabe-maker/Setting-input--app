@@ -31,7 +31,7 @@ if 'auto_scene_count' not in st.session_state: st.session_state.auto_scene_count
 
 # --- 3. UIセクション ---
 st.header("1. 店舗名入力 ")
-shop_name = st.text_input("店舗名", value="店舗A")
+shop_name = st.text_input("店舗名", value="")
 st.divider()
 
 # --- 2. ゾーン登録 ---
@@ -212,4 +212,5 @@ if st.button("プレビューを確認してCSV作成 💾", type="primary"):
     buf = io.BytesIO()
     final_df.to_csv(buf, index=False, header=False, encoding="utf-8-sig")
     st.download_button("CSVダウンロード 📥", buf.getvalue(), f"{shop_name}_setting.csv", "text/csv")
+
 
