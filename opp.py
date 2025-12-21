@@ -58,7 +58,7 @@ st.divider()
 
 # 2. ゾーン情報
 st.header("2. ゾーン情報")
-z_edit = st.data_editor(st.session_state.z_df, num_rows="dynamic", use_container_width=True, key="z_edit_v14")
+z_edit = st.data_editor(st.session_state.z_df, num_rows="dynamic", use_container_width=True, key="z_fix_v15")
 st.session_state.z_df = z_edit
 v_zones = [""] + [str(z).strip() for z in z_edit["ゾーン名"].tolist() if str(z).strip()]
 
@@ -72,7 +72,7 @@ g_edit = st.data_editor(
         "紐づけるゾーン名": st.column_config.SelectboxColumn(options=v_zones)
     },
     use_container_width=True,
-    key="g_edit_v14"
+    key="g_fix_v15"
 )
 st.session_state.g_df = g_edit
 v_groups = [""] + [str(g).strip() for g in g_edit["グループ名"].tolist() if str(g).strip()]
@@ -93,7 +93,7 @@ with st.expander("シーン名を登録"):
 
 st.caption(f"登録済み: {', '.join(st.session_state.scene_master)}")
 
-# 【消失対策】ここでは一切の自動計算を行わない（ただの入力枠に徹する）
+# 【重要】入力消失を物理的に防ぐため、session_stateを直接編集せず、ボタンで反映させる方式
 s_edit = st.data_editor(
     st.session_state.s_df,
     num_rows="dynamic",
@@ -104,24 +104,26 @@ s_edit = st.data_editor(
         "調光": st.column_config.NumberColumn("調光 (L列)", min_value=0, max_value=100, format="%d%%")
     },
     use_container_width=True,
-    key="s_edit_v14"
+    key="s_fix_v15"
 )
-st.session_state.s_df = s_edit
 
-# ★ ゾーン名を一括で埋める専用ボタン（消える現象を回避するための物理的な切り分け）
-if st.button("🔄 グループ設定からゾーン名を自動入力する"):
-    temp_df = st.session_state.s_df.copy()
-    for idx in range(len(temp_df)):
-        gn = temp_df.at[idx, "紐づけるグループ名"]
+# ゾーン自動補完 & 状態同期ボタン
+if st.button("🔄 入力内容を確定してゾーン名を自動補完する"):
+    temp_s = s_edit.copy()
+    for idx in range(len(temp_s)):
+        gn = temp_s.at[idx, "紐づけるグループ名"]
         if gn in g_to_zone_map:
-            temp_df.at[idx, "紐づけるゾーン名"] = g_to_zone_map[gn]
-    st.session_state.s_df = temp_df
+            temp_s.at[idx, "紐づけるゾーン名"] = g_to_zone_map[gn]
+    st.session_state.s_df = temp_s
     st.rerun()
 
 st.divider()
 
 # --- 4. 出力処理 ---
 if st.button("プレビューを確認する", type="primary"):
+    # 最新のs_edit内容をセッションに同期
+    st.session_state.s_df = s_edit
+    
     zf_f = st.session_state.z_df[st.session_state.z_df["ゾーン名"] != ""].reset_index(drop=True)
     gf_f = st.session_state.g_df[st.session_state.g_df["グループ名"] != ""].reset_index(drop=True)
     sf_f = st.session_state.s_df[st.session_state.s_df["シーン名"] != ""].reset_index(drop=True)
@@ -135,14 +137,14 @@ if st.button("プレビューを確認する", type="primary"):
             k = int(cv)
             tp = g_to_tp_map[gn]
             if tp == "調光調色" and not (2700 <= k <= 6500):
-                errs.append(f"行{i+1}: {gn}は2700-6500Kの範囲で入力してください。")
+                errs.append(f"行{i+1}: {gn}は2700-6500Kで入力してください。")
             elif tp in ["Synca", "Synca Bright"] and not (1800 <= k <= 12000):
-                errs.append(f"行{i+1}: {gn}は1800-12000Kの範囲で入力してください。")
+                errs.append(f"行{i+1}: {gn}は1800-12000Kで入力してください。")
     
     if errs:
         for e in errs: st.error(e)
     else:
-        # ID同期ロジック (同じシーン名なら同じID)
+        # ID同期ロジック (同じシーン名なら同じIDをK列に振る)
         scene_id_db = {}
         sid_cnt = 8193
         
@@ -168,11 +170,10 @@ if st.button("プレビューを確認する", type="primary"):
 
         header_df = pd.DataFrame(CSV_HEADER)
         st.session_state.final_df = pd.concat([header_df, mat], ignore_index=True)
-        
         st.subheader("5. 最終プレビュー")
         pdf = st.session_state.final_df.copy()
         pdf.columns = make_unique_cols(ROW3)
-        st.dataframe(pdf.iloc[3:], hide_index=True, use_container_width=True)
+        st.dataframe(pdf.iloc[3:], hide_index=True)
 
 if 'final_df' in st.session_state:
     b = io.BytesIO()
