@@ -6,7 +6,6 @@ import io
 GROUP_TYPE_MAP = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 NUM_COLS = 236 
 
-# ヘッダー構造
 ROW1 = [None] * NUM_COLS
 ROW1[0], ROW1[4], ROW1[9], ROW1[17], ROW1[197], ROW1[207] = 'Zone情報', 'Group情報', 'Scene情報', 'Timetable情報', 'Timetable-schedule情報', 'Timetable期間/特異日情報'
 ROW3 = [None] * NUM_COLS
@@ -43,10 +42,13 @@ with st.form("z_form", clear_on_submit=True):
             st.session_state.z_list.append({"ゾーン名": z_name, "フェード秒": z_fade})
             st.rerun()
 
-if len(st.session_state.z_list) > 0:
-    st.dataframe(pd.DataFrame(st.session_state.z_list), hide_index=True)
-    if st.button("最後に入力したゾーンを削除"):
-        st.session_state.z_list.pop()
+if st.session_state.z_list:
+    z_disp = pd.DataFrame(st.session_state.z_list)
+    z_disp.index += 1
+    st.table(z_disp)
+    del_z = st.number_input("削除するゾーンの番号", 1, len(st.session_state.z_list), step=1, key="del_z")
+    if st.button("指定したゾーンを削除"):
+        st.session_state.z_list.pop(del_z - 1)
         st.rerun()
 
 # 3. グループ情報
@@ -62,17 +64,19 @@ with st.form("g_form", clear_on_submit=True):
             st.session_state.g_list.append({"グループ名": g_name, "グループタイプ": g_type, "紐づけるゾーン名": g_zone})
             st.rerun()
 
-if len(st.session_state.g_list) > 0:
-    st.dataframe(pd.DataFrame(st.session_state.g_list), hide_index=True)
-    if st.button("最後に入力したグループを削除"):
-        st.session_state.g_list.pop()
+if st.session_state.g_list:
+    g_disp = pd.DataFrame(st.session_state.g_list)
+    g_disp.index += 1
+    st.table(g_disp)
+    del_g = st.number_input("削除するグループの番号", 1, len(st.session_state.g_list), step=1, key="del_g")
+    if st.button("指定したグループを削除"):
+        st.session_state.g_list.pop(del_g - 1)
         st.rerun()
 
 st.divider()
 
 # 4. シーン情報
 st.header("4. シーン登録")
-st.write("- **調光調色**: 2700 〜 6500 / **Synca**: 1800 〜 12000 または 11-1 形式")
 v_groups = [""] + [g["グループ名"] for g in st.session_state.g_list]
 g_dict = {g["グループ名"]: g for g in st.session_state.g_list}
 
@@ -82,31 +86,40 @@ with st.form("s_form", clear_on_submit=False):
     target_g = c2.selectbox("対象グループ", options=v_groups)
     dim = c3.number_input("調光(%)", 0, 100, 100)
     
-    st.write("**調色設定**")
+    st.write("**調色設定** (Synca以外でカラーを選んだ場合は無視されます)")
     cc1, cc2, cc3 = st.columns([2, 1, 1])
-    k_val = cc1.text_input("ケルビン (数字のみ)")
+    k_val = cc1.text_input("ケルビン (調光調色・Synca用)")
     row_val = cc2.selectbox("Synca 行(1-11)", ["-"] + list(range(1, 12)))
     col_val = cc3.selectbox("Synca 列(1-11)", ["-"] + list(range(1, 12)))
 
     if st.form_submit_button("シーンにグループを追加"):
         if s_name and target_g:
+            g_info = g_dict[target_g]
             synca_code = f"{row_val}-{col_val}" if str(row_val) != "-" and str(col_val) != "-" else ""
-            st.session_state.s_list.append({
-                "シーン名": s_name, 
-                "紐づけるグループ名": target_g, 
-                "紐づけるゾーン名": g_dict[target_g]["紐づけるゾーン名"], 
-                "調光": dim, 
-                "ケルビン": k_val if not synca_code else "", 
-                "Syncaカラー": synca_code
-            })
-            st.toast(f"追加: {s_name}")
+            
+            # --- 警告チェック ---
+            if synca_code and g_info["グループタイプ"] not in ["Synca", "Synca Bright"]:
+                st.error(f"警告：【{target_g}】は「{g_info['グループタイプ']}」のため、Syncaカラー(11-1等)は設定できません。ケルビンのみ入力してください。")
+            else:
+                st.session_state.s_list.append({
+                    "シーン名": s_name, 
+                    "紐づけるグループ名": target_g, 
+                    "紐づけるゾーン名": g_info["紐づけるゾーン名"], 
+                    "調光": dim, 
+                    "ケルビン": k_val if not synca_code else "", 
+                    "Syncaカラー": synca_code
+                })
+                st.success(f"追加: {s_name}")
         else:
             st.warning("名前とグループは必須です")
 
-if len(st.session_state.s_list) > 0:
-    st.dataframe(pd.DataFrame(st.session_state.s_list), hide_index=True)
-    if st.button("最後に入力したシーンを削除"):
-        st.session_state.s_list.pop()
+if st.session_state.s_list:
+    s_disp = pd.DataFrame(st.session_state.s_list)
+    s_disp.index += 1
+    st.table(s_disp)
+    del_s = st.number_input("削除するシーン行の番号", 1, len(st.session_state.s_list), step=1, key="del_s")
+    if st.button("指定したシーン行を削除"):
+        st.session_state.s_list.pop(del_s - 1)
         st.rerun()
 
 st.divider()
@@ -131,11 +144,12 @@ with st.expander("タイムテーブル作成フォーム"):
                 st.session_state.tt_list.append({"tt_name": tt_name, "zone": tt_zone, "slots": slots})
                 st.rerun()
 
-if len(st.session_state.tt_list) > 0:
-    for tt in st.session_state.tt_list:
-        st.text(f"● {tt['tt_name']} [{tt['zone']}]: " + " / ".join([f"{sl['time']} {sl['scene']}" for sl in tt['slots']]))
-    if st.button("最後に入力したタイムテーブルを削除"):
-        st.session_state.tt_list.pop()
+if st.session_state.tt_list:
+    tt_disp = pd.DataFrame([{"番号": i+1, "名": tt["tt_name"], "ゾーン": tt["zone"]} for i, tt in enumerate(st.session_state.tt_list)])
+    st.table(tt_disp)
+    del_tt = st.number_input("削除するタイムテーブルの番号", 1, len(st.session_state.tt_list), step=1, key="del_tt")
+    if st.button("指定したタイムテーブルを削除"):
+        st.session_state.tt_list.pop(del_tt - 1)
         st.rerun()
 
 st.divider()
@@ -150,19 +164,13 @@ if st.button("プレビューを確認してCSV作成", type="primary"):
     mat = pd.DataFrame(index=range(max(len(zf_f), len(gf_f), len(sf_f), len(tt_f), 1)), columns=range(NUM_COLS))
     
     for i, r in zf_f.iterrows(): mat.iloc[i, 0:3] = [r["ゾーン名"], 4097+i, r["フェード秒"]]
-    for i, r in gf_f.iterrows(): mat.iloc[i, 4:8] = [r["グループ名"], 32769+i, GROUP_TYPE_MAP.get(r["グループタイプ"], "1ch"), r["紐づけるゾーン名"]]
+    for i, r in gf_f.iterrows(): mat.iloc[i, 4:8] = [r["グループ名"], 32770+i, GROUP_TYPE_MAP.get(r["グループタイプ"], "1ch"), r["紐づけるゾーン名"]]
     
     scene_id_db = {}; sid_cnt = 8193
     for i, r in sf_f.iterrows():
         sn = r["シーン名"]
         if sn not in scene_id_db: scene_id_db[sn] = sid_cnt; sid_cnt += 1
-        mat.iloc[i, 9] = sn
-        mat.iloc[i, 10] = scene_id_db[sn]
-        mat.iloc[i, 11] = r["調光"]
-        mat.iloc[i, 12] = r["ケルビン"]
-        mat.iloc[i, 13] = r["Syncaカラー"]
-        mat.iloc[i, 15] = r["紐づけるゾーン名"]
-        mat.iloc[i, 16] = r["紐づけるグループ名"]
+        mat.iloc[i, 9:17] = [sn, scene_id_db[sn], r["調光"], r["ケルビン"], r["Syncaカラー"], "", r["紐づけるゾーン名"], r["紐づけるグループ名"]]
     
     for i, tt in enumerate(tt_f):
         mat.iloc[i, 17:20] = [tt["tt_name"], 12289+i, tt["zone"]]
