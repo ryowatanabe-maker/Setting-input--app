@@ -58,7 +58,7 @@ st.divider()
 
 # 2. ゾーン情報
 st.header("2. ゾーン情報")
-z_edit = st.data_editor(st.session_state.z_df, num_rows="dynamic", use_container_width=True, key="z_edit_v13")
+z_edit = st.data_editor(st.session_state.z_df, num_rows="dynamic", use_container_width=True, key="z_edit_v14")
 st.session_state.z_df = z_edit
 v_zones = [""] + [str(z).strip() for z in z_edit["ゾーン名"].tolist() if str(z).strip()]
 
@@ -72,7 +72,7 @@ g_edit = st.data_editor(
         "紐づけるゾーン名": st.column_config.SelectboxColumn(options=v_zones)
     },
     use_container_width=True,
-    key="g_edit_v13"
+    key="g_edit_v14"
 )
 st.session_state.g_df = g_edit
 v_groups = [""] + [str(g).strip() for g in g_edit["グループ名"].tolist() if str(g).strip()]
@@ -93,7 +93,7 @@ with st.expander("シーン名を登録"):
 
 st.caption(f"登録済み: {', '.join(st.session_state.scene_master)}")
 
-# 入力安定化のため自動補完はここでは行わない
+# 【消失対策】ここでは一切の自動計算を行わない（ただの入力枠に徹する）
 s_edit = st.data_editor(
     st.session_state.s_df,
     num_rows="dynamic",
@@ -104,25 +104,27 @@ s_edit = st.data_editor(
         "調光": st.column_config.NumberColumn("調光 (L列)", min_value=0, max_value=100, format="%d%%")
     },
     use_container_width=True,
-    key="s_edit_v13"
+    key="s_edit_v14"
 )
 st.session_state.s_df = s_edit
+
+# ★ ゾーン名を一括で埋める専用ボタン（消える現象を回避するための物理的な切り分け）
+if st.button("🔄 グループ設定からゾーン名を自動入力する"):
+    temp_df = st.session_state.s_df.copy()
+    for idx in range(len(temp_df)):
+        gn = temp_df.at[idx, "紐づけるグループ名"]
+        if gn in g_to_zone_map:
+            temp_df.at[idx, "紐づけるゾーン名"] = g_to_zone_map[gn]
+    st.session_state.s_df = temp_df
+    st.rerun()
 
 st.divider()
 
 # --- 4. 出力処理 ---
 if st.button("プレビューを確認する", type="primary"):
-    # プレビュー時にゾーン名を自動補完
-    for idx in range(len(s_edit)):
-        gn = s_edit.at[idx, "紐づけるグループ名"]
-        if gn in g_to_zone_map:
-            s_edit.at[idx, "紐づけるゾーン名"] = g_to_zone_map[gn]
-    
-    st.session_state.s_df = s_edit
-
-    zf_f = z_edit[z_edit["ゾーン名"] != ""].reset_index(drop=True)
-    gf_f = g_edit[g_edit["グループ名"] != ""].reset_index(drop=True)
-    sf_f = s_edit[s_edit["シーン名"] != ""].reset_index(drop=True)
+    zf_f = st.session_state.z_df[st.session_state.z_df["ゾーン名"] != ""].reset_index(drop=True)
+    gf_f = st.session_state.g_df[st.session_state.g_df["グループ名"] != ""].reset_index(drop=True)
+    sf_f = st.session_state.s_df[st.session_state.s_df["シーン名"] != ""].reset_index(drop=True)
     
     # バリデーション
     errs = []
@@ -158,13 +160,12 @@ if st.button("プレビューを確認する", type="primary"):
                 sid_cnt += 1
             
             mat.iloc[i, 9] = sn
-            mat.iloc[i, 10] = scene_id_map[sn] if 'scene_id_map' in locals() else scene_id_db[sn]
+            mat.iloc[i, 10] = scene_id_db[sn] # K列 ID同期
             mat.iloc[i, 11] = r["調光"]
             mat.iloc[i, 12] = r["調色"]
             mat.iloc[i, 14] = r["紐づけるゾーン名"]
             mat.iloc[i, 15] = r["紐づけるグループ名"]
 
-        # CSV出力用データフレームの結合 (エラー箇所を修正)
         header_df = pd.DataFrame(CSV_HEADER)
         st.session_state.final_df = pd.concat([header_df, mat], ignore_index=True)
         
