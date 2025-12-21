@@ -6,7 +6,7 @@ import io
 GROUP_TYPE_MAP = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 NUM_COLS = 236 
 
-# ヘッダー構造（J:scene, K:id, L:dim, M:color, N:perform, O:fresh-key, P:zone, Q:group）
+# ヘッダー構造
 ROW1 = [None] * NUM_COLS
 ROW1[0], ROW1[4], ROW1[9], ROW1[17], ROW1[197], ROW1[207] = 'Zone情報', 'Group情報', 'Scene情報', 'Timetable情報', 'Timetable-schedule情報', 'Timetable期間/特異日情報'
 ROW3 = [None] * NUM_COLS
@@ -20,7 +20,7 @@ CSV_HEADER = [ROW1, [None] * NUM_COLS, ROW3]
 st.set_page_config(page_title="設定データ作成アプリ", layout="wide")
 st.title("設定データ作成アプリ ⚙️")
 
-# セッション管理：リセット処理
+# セッション管理
 for key in ['z_list', 'g_list', 's_list', 'tt_list']:
     if key not in st.session_state or not isinstance(st.session_state[key], list):
         st.session_state[key] = []
@@ -45,7 +45,9 @@ with st.form("z_form", clear_on_submit=True):
 
 if len(st.session_state.z_list) > 0:
     st.dataframe(pd.DataFrame(st.session_state.z_list), hide_index=True)
-    if st.button("ゾーンを全削除"): st.session_state.z_list = []; st.rerun()
+    if st.button("最後に入力したゾーンを削除"):
+        st.session_state.z_list.pop()
+        st.rerun()
 
 # 3. グループ情報
 st.header("3. グループ登録")
@@ -62,7 +64,9 @@ with st.form("g_form", clear_on_submit=True):
 
 if len(st.session_state.g_list) > 0:
     st.dataframe(pd.DataFrame(st.session_state.g_list), hide_index=True)
-    if st.button("グループを全削除"): st.session_state.g_list = []; st.rerun()
+    if st.button("最後に入力したグループを削除"):
+        st.session_state.g_list.pop()
+        st.rerun()
 
 st.divider()
 
@@ -78,23 +82,21 @@ with st.form("s_form", clear_on_submit=False):
     target_g = c2.selectbox("対象グループ", options=v_groups)
     dim = c3.number_input("調光(%)", 0, 100, 100)
     
-    st.write("**調色設定** (Syncaカラーは自動的に [perform] 欄へ入力されます)")
+    st.write("**調色設定**")
     cc1, cc2, cc3 = st.columns([2, 1, 1])
-    k_val = cc1.text_input("ケルビン (数字のみ入力)")
+    k_val = cc1.text_input("ケルビン (数字のみ)")
     row_val = cc2.selectbox("Synca 行(1-11)", ["-"] + list(range(1, 12)))
     col_val = cc3.selectbox("Synca 列(1-11)", ["-"] + list(range(1, 12)))
 
     if st.form_submit_button("シーンにグループを追加"):
         if s_name and target_g:
-            # Synca 11x11が選ばれているか判定
             synca_code = f"{row_val}-{col_val}" if str(row_val) != "-" and str(col_val) != "-" else ""
-            
             st.session_state.s_list.append({
                 "シーン名": s_name, 
                 "紐づけるグループ名": target_g, 
                 "紐づけるゾーン名": g_dict[target_g]["紐づけるゾーン名"], 
                 "調光": dim, 
-                "ケルビン": k_val if not synca_code else "", # SyncaカラーがあるならKは空
+                "ケルビン": k_val if not synca_code else "", 
                 "Syncaカラー": synca_code
             })
             st.toast(f"追加: {s_name}")
@@ -103,7 +105,9 @@ with st.form("s_form", clear_on_submit=False):
 
 if len(st.session_state.s_list) > 0:
     st.dataframe(pd.DataFrame(st.session_state.s_list), hide_index=True)
-    if st.button("シーンを全削除"): st.session_state.s_list = []; st.rerun()
+    if st.button("最後に入力したシーンを削除"):
+        st.session_state.s_list.pop()
+        st.rerun()
 
 st.divider()
 
@@ -130,6 +134,9 @@ with st.expander("タイムテーブル作成フォーム"):
 if len(st.session_state.tt_list) > 0:
     for tt in st.session_state.tt_list:
         st.text(f"● {tt['tt_name']} [{tt['zone']}]: " + " / ".join([f"{sl['time']} {sl['scene']}" for sl in tt['slots']]))
+    if st.button("最後に入力したタイムテーブルを削除"):
+        st.session_state.tt_list.pop()
+        st.rerun()
 
 st.divider()
 
@@ -142,27 +149,21 @@ if st.button("プレビューを確認してCSV作成", type="primary"):
     
     mat = pd.DataFrame(index=range(max(len(zf_f), len(gf_f), len(sf_f), len(tt_f), 1)), columns=range(NUM_COLS))
     
-    # ゾーン・グループ
     for i, r in zf_f.iterrows(): mat.iloc[i, 0:3] = [r["ゾーン名"], 4097+i, r["フェード秒"]]
     for i, r in gf_f.iterrows(): mat.iloc[i, 4:8] = [r["グループ名"], 32769+i, GROUP_TYPE_MAP.get(r["グループタイプ"], "1ch"), r["紐づけるゾーン名"]]
     
-    # シーン出力
     scene_id_db = {}; sid_cnt = 8193
     for i, r in sf_f.iterrows():
         sn = r["シーン名"]
         if sn not in scene_id_db: scene_id_db[sn] = sid_cnt; sid_cnt += 1
-        
-        # J:scene(9), K:id(10), L:dim(11), M:color(12), N:perform(13), O:fresh-key(14), P:zone(15), Q:group(16)
-        # Syncaカラーがあれば N(perform)に、なければ K(ケルビン)を M(color)に。
         mat.iloc[i, 9] = sn
         mat.iloc[i, 10] = scene_id_db[sn]
         mat.iloc[i, 11] = r["調光"]
         mat.iloc[i, 12] = r["ケルビン"]
-        mat.iloc[i, 13] = r["Syncaカラー"] # [perform] 欄
+        mat.iloc[i, 13] = r["Syncaカラー"]
         mat.iloc[i, 15] = r["紐づけるゾーン名"]
         mat.iloc[i, 16] = r["紐づけるグループ名"]
     
-    # タイムテーブル出力
     for i, tt in enumerate(tt_f):
         mat.iloc[i, 17:20] = [tt["tt_name"], 12289+i, tt["zone"]]
         c_idx = 22
