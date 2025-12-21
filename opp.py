@@ -84,7 +84,7 @@ st.divider()
 # 4. シーン情報
 st.header("4. シーン情報")
 
-# シーン名マスター登録
+# シーン名マスター登録エリア
 with st.expander("シーン名を追加・管理"):
     new_s = st.text_input("登録するシーン名")
     if st.button("登録"):
@@ -92,7 +92,8 @@ with st.expander("シーン名を追加・管理"):
             st.session_state.scene_master.append(new_s)
             st.rerun()
 
-# シーン情報テーブル
+# シーン情報の表示と編集
+# 編集安定化のため、グループ名に基づいてゾーン名を埋める処理は、あえて「プレビュー」ボタン押下時に一括で行うように変更しました。
 s_edit = st.data_editor(
     st.session_state.s_df,
     num_rows="dynamic",
@@ -105,9 +106,32 @@ s_edit = st.data_editor(
     use_container_width=True,
     key="s_edit_final"
 )
+st.session_state.s_df = s_edit
 
-# 自動入力ロジック（プレビューボタンを押さずとも、グループ選択時にゾーンを埋める）
-if not s_edit.equals(st.session_state.s_df):
+st.divider()
+
+# --- 4. 実行処理 ---
+if st.button("プレビューを確認する", type="primary"):
+    # プレビュー時に自動的にゾーン名を補完する
     for i, row in s_edit.iterrows():
         g_val = row["紐づけるグループ名"]
-        if
+        if g_val in g_to_zone:
+            z_val = g_to_zone[g_val]
+            # ゾーン名が設定済みゾーン名と異なる場合のみ更新
+            if s_edit.at[i, "紐づけるゾーン名"] != z_val:
+                s_edit.at[i, "紐づけるゾーン名"] = z_val
+
+    zf_f = z_edit[z_edit["ゾーン名"] != ""].reset_index(drop=True)
+    gf_f = g_edit[g_edit["グループ名"] != ""].reset_index(drop=True)
+    sf_f = s_edit[s_edit["シーン名"] != ""].reset_index(drop=True)
+    
+    # 調色の範囲バリデーション
+    errs = []
+    for idx, r in sf_f.iterrows():
+        gn = r["紐づけるグループ名"]
+        color_raw = str(r["調色"]).upper().replace("K", "").strip()
+        if gn in g_to_tp and color_raw.isdigit():
+            k = int(color_raw)
+            tp = g_to_tp[gn]
+            if tp == "調光調色" and not (2700 <= k <= 6500):
+                errs.append(f"シーン行{idx+1}: {gn}は『調光調色』のため2700-650
