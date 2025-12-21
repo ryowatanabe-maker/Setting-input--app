@@ -20,10 +20,13 @@ CSV_HEADER = [ROW1, [None] * NUM_COLS, ROW3]
 st.set_page_config(page_title="設定データ作成アプリ", layout="wide")
 st.title("設定データ作成アプリ ⚙️")
 
-for key in ['z_list', 'g_list', 's_list', 'tt_list', 'tt_slots_count']:
-    if key not in st.session_state:
-        if key == 'tt_slots_count': st.session_state[key] = 1
-        else: st.session_state[key] = []
+# セッション管理
+states = {
+    'z_list': [], 'g_list': [], 's_list': [], 'tt_list': [],
+    'tt_slots_count': 1, 'auto_scene_count': 2
+}
+for key, val in states.items():
+    if key not in st.session_state: st.session_state[key] = val
 
 # --- 3. UIセクション ---
 st.header("1. 店舗名入力")
@@ -85,7 +88,7 @@ else:
 
 init_s = st.session_state.s_list[selected_s_idx-1] if selected_s_idx > 0 else {"シーン名": "", "紐づけるグループ名": "", "調光": 100, "ケルビン": "", "Syncaカラー": "", "FreshKey": ""}
 
-with st.form("s_form_v27"):
+with st.form("s_form_v28"):
     c1, c2, c3 = st.columns([2, 2, 1])
     s_name = c1.text_input("シーン名", value=init_s["シーン名"])
     target_g = c2.selectbox("対象グループ", options=v_groups, index=v_groups.index(init_s["紐づけるグループ名"]) if init_s["紐づけるグループ名"] in v_groups else 0)
@@ -115,40 +118,51 @@ st.header("5. タイムテーブル登録")
 v_scenes = [""] + sorted(list(set([s["シーン名"] for s in st.session_state.s_list])))
 
 # 繰り返し自動生成
-with st.expander("✨ 繰り返しスケジュールを自動作成"):
+with st.expander("✨ スケジュール自動作成 (複数シーンの繰り返し対応)"):
     with st.form("auto_tt"):
         col_a1, col_a2, col_a3, col_a4 = st.columns(4)
         auto_z = col_a1.selectbox("対象ゾーン", options=v_zones)
         start_t = col_a2.text_input("開始時間", "10:00")
         end_t = col_a3.text_input("終了時間", "21:00")
-        interval = col_a4.number_input("間隔(分)", 1, 60, 8)
+        interval = col_a4.number_input("間隔(分)", 1, 120, 8)
         
-        col_a5, col_a6 = st.columns(2)
-        scene_a = col_a5.selectbox("シーンA", options=v_scenes)
-        scene_b = col_a6.selectbox("シーンB", options=v_scenes)
+        st.write("▼ 繰り返すシーンの順番を設定")
+        auto_scenes = []
+        scene_cols = st.columns(4)
+        for i in range(st.session_state.auto_scene_count):
+            with scene_cols[i % 4]:
+                as_val = st.selectbox(f"シーン {i+1}", options=v_scenes, key=f"auto_s_{i}")
+                if as_val: auto_scenes.append(as_val)
         
-        if st.form_submit_button("スケジュールを計算してセット"):
-            try:
-                curr = datetime.strptime(start_t, "%H:%M")
-                limit = datetime.strptime(end_t, "%H:%M")
-                auto_slots = []; toggle = True
-                while curr <= limit:
-                    auto_slots.append({"time": curr.strftime("%H:%M"), "scene": scene_a if toggle else scene_b})
-                    curr += timedelta(minutes=interval); toggle = not toggle
-                st.session_state.temp_slots = auto_slots
-                st.session_state.temp_tt_zone = auto_z
-                st.session_state.tt_slots_count = len(auto_slots)
-                st.rerun()
-            except: st.error("形式エラー(HH:MM)")
+        col_auto_btn1, col_auto_btn2 = st.columns([2, 8])
+        if col_auto_btn1.form_submit_button("スケジュールを計算してセット"):
+            if auto_scenes:
+                try:
+                    curr = datetime.strptime(start_t, "%H:%M")
+                    limit = datetime.strptime(end_t, "%H:%M")
+                    auto_slots = []; idx = 0
+                    while curr <= limit:
+                        auto_slots.append({"time": curr.strftime("%H:%M"), "scene": auto_scenes[idx % len(auto_scenes)]})
+                        curr += timedelta(minutes=interval); idx += 1
+                    st.session_state.temp_slots = auto_slots
+                    st.session_state.temp_tt_zone = auto_z
+                    st.session_state.tt_slots_count = len(auto_slots)
+                    st.rerun()
+                except: st.error("形式エラー(HH:MM)")
+        
+    if st.button("➕ 繰り返しシーンを追加"):
+        st.session_state.auto_scene_count += 1; st.rerun()
+    if st.session_state.auto_scene_count > 1:
+        if st.button("➖ シーン枠を減らす"):
+            st.session_state.auto_scene_count -= 1; st.rerun()
 
 # タイムテーブル本体フォーム
 with st.form("tt_main_form"):
     ct1, ct2 = st.columns(2)
-    tt_name = ct1.text_input("タイムテーブル名 (例: 通常, 春)", value="")
-    # 自動生成からゾーンを引き継ぐ
+    tt_name = ct1.text_input("タイムテーブル名 (例: 春)")
     tt_zone = ct2.selectbox("対象ゾーン", options=v_zones, index=v_zones.index(st.session_state.get("temp_tt_zone", "")) if st.session_state.get("temp_tt_zone", "") in v_zones else 0)
     
-    st.write("▼ スケジュール設定")
+    st.write("▼ スケジュール詳細")
     base_data = st.session_state.get("temp_slots", [])
     final_slots = []
     
@@ -168,11 +182,8 @@ with st.form("tt_main_form"):
             if "temp_slots" in st.session_state: del st.session_state.temp_slots
             st.rerun()
 
-# タイムテーブルのスロットを増やすボタン (フォームの外)
-col_plus, col_minus = st.columns([1, 10])
-if col_plus.button("➕ スロットを追加"):
-    st.session_state.tt_slots_count += 1
-    st.rerun()
+if st.button("➕ 手動スロットを追加"):
+    st.session_state.tt_slots_count += 1; st.rerun()
 
 if st.session_state.tt_list:
     st.subheader("現在のタイムテーブル一覧")
@@ -192,21 +203,4 @@ if st.button("プレビューを確認してCSV作成", type="primary"):
     gf_f = pd.DataFrame(st.session_state.g_list)
     sf_f = pd.DataFrame(st.session_state.s_list)
     tt_f = st.session_state.tt_list
-    mat = pd.DataFrame(index=range(max(len(zf_f), len(gf_f), len(sf_f), len(tt_f), 1)), columns=range(NUM_COLS))
-    for i, r in zf_f.iterrows(): mat.iloc[i, 0:3] = [r["ゾーン名"], 4097+i, r["フェード秒"]]
-    for i, r in gf_f.iterrows(): mat.iloc[i, 4:8] = [r["グループ名"], 32770+i, GROUP_TYPE_MAP.get(r["グループタイプ"], "1ch"), r["紐づけるゾーン名"]]
-    scene_id_db = {}; sid_cnt = 8193
-    for i, r in sf_f.iterrows():
-        sn = r["シーン名"]
-        if sn not in scene_id_db: scene_id_db[sn] = sid_cnt; sid_cnt += 1
-        mat.iloc[i, 9:17] = [sn, scene_id_db[sn], r["調光"], r["ケルビン"], r["Syncaカラー"], r.get("FreshKey",""), r["紐づけるゾーン名"], r["紐づけるグループ名"]]
-    for i, tt in enumerate(tt_f):
-        mat.iloc[i, 17:20] = [tt["tt_name"], 12289+i, tt["zone"]]
-        c_idx = 22
-        for slot in tt["slots"]:
-            if c_idx < 196: mat.iloc[i, c_idx], mat.iloc[i, c_idx+1] = slot["time"], slot["scene"]; c_idx += 2
-    final_df = pd.concat([pd.DataFrame(CSV_HEADER), mat], ignore_index=True)
-    st.dataframe(final_df.iloc[3:].dropna(how='all', axis=0), use_container_width=True)
-    buf = io.BytesIO()
-    final_df.to_csv(buf, index=False, header=False, encoding="utf-8-sig")
-    st.download_button("📥 CSVダウンロード", buf.getvalue(), f"{shop_name}_setting.csv", "text/csv")
+    mat = pd.DataFrame(index=range(max(len(zf_f), len(gf_f), len(sf_f
