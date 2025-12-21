@@ -30,12 +30,12 @@ if 'tt_slots_count' not in st.session_state: st.session_state.tt_slots_count = 1
 if 'auto_scene_count' not in st.session_state: st.session_state.auto_scene_count = 2
 
 # --- 3. UIセクション ---
-st.header("1. 店舗名入力 ")
-shop_name = st.text_input("店舗名", value="")
+st.header("1. 店舗名入力 🏢")
+shop_name = st.text_input("店舗名", value="") # 初期値を空に変更
 st.divider()
 
 # --- 2. ゾーン登録 ---
-st.header("2. ゾーン登録 ")
+st.header("2. ゾーン登録 🌐")
 with st.form("z_form_v37", clear_on_submit=True):
     col_z1, col_z2 = st.columns(2)
     z_name = col_z1.text_input("ゾーン名")
@@ -50,7 +50,7 @@ if st.session_state.z_list:
     if st.button("ゾーン削除実行 🗑️") and del_z_idx > 0: st.session_state.z_list.pop(del_z_idx - 1); st.rerun()
 
 # --- 3. グループ登録 ---
-st.header("3. グループ登録 ")
+st.header("3. グループ登録 💡")
 v_zones = [""] + [z["ゾーン名"] for z in st.session_state.z_list]
 with st.form("g_form_v37", clear_on_submit=True):
     col_g1, col_g2, col_g3 = st.columns(3)
@@ -67,7 +67,7 @@ if st.session_state.g_list:
     if st.button("グループ削除実行 🗑️") and del_g_idx > 0: st.session_state.g_list.pop(del_g_idx - 1); st.rerun()
 
 # --- 4. シーン登録 ---
-st.header("4. シーン登録・編集 ")
+st.header("4. シーン登録・編集 🎬")
 v_groups = [""] + [g["グループ名"] for g in st.session_state.g_list]
 g_dict = {g["グループ名"]: g for g in st.session_state.g_list}
 if st.session_state.s_list:
@@ -99,7 +99,7 @@ with st.form("s_form_v37"):
 st.divider()
 
 # --- 5. タイムテーブル作成 ---
-st.header("5. タイムテーブル作成 ")
+st.header("5. タイムテーブル作成 ⏳")
 v_scenes = [""] + sorted(list(set([s["シーン名"] for s in st.session_state.s_list])))
 with st.expander("スケジュール自動作成"):
     with st.form("at_v37"):
@@ -142,10 +142,29 @@ with st.form("tt_v37"):
 
 if st.button("手動スロットを追加 ➕"): st.session_state.tt_slots_count += 1; st.rerun()
 
+# --- タイムテーブル一覧の表示 ---
+if st.session_state.tt_list:
+    st.subheader("現在のタイムテーブル一覧 📋")
+    tt_summary = []
+    for i, tt in enumerate(st.session_state.tt_list):
+        tt_summary.append({
+            "No": i + 1,
+            "タイムテーブル名": tt["tt_name"],
+            "対象ゾーン": tt["zone"],
+            "日出": tt["sun_start"],
+            "日没": tt["sun_end"],
+            "登録数": len(tt["slots"])
+        })
+    st.table(pd.DataFrame(tt_summary).set_index('No'))
+    del_tt_idx = st.number_input("タイムテーブル削除No", 0, len(st.session_state.tt_list), 0, key="dtt")
+    if st.button("タイムテーブル削除実行 🗑️") and del_tt_idx > 0:
+        st.session_state.tt_list.pop(del_tt_idx - 1)
+        st.rerun()
+
 st.divider()
 
 # --- 6. 適用 & 特異日設定 ---
-st.header("6. スケジュール適用・特異日設定 ")
+st.header("6. スケジュール適用・特異日設定 🗓️")
 v_tt_names = [""] + [tt["tt_name"] for tt in st.session_state.tt_list]
 
 col_apply1, col_apply2 = st.columns(2)
@@ -167,7 +186,7 @@ with col_apply1:
             st.session_state.ts_list.append({"zone": tz, "config": cfg}); st.rerun()
 
 with col_apply2:
-    st.subheader("特異日・期間設定 (正月など) ")
+    st.subheader("特異日・期間設定 (正月など) 🎌")
     with st.form("period_v37"):
         pz = st.selectbox("対象ゾーン ", v_zones)
         p_tt = st.selectbox("適用タイムテーブル ", v_tt_names)
@@ -212,5 +231,3 @@ if st.button("プレビューを確認してCSV作成 💾", type="primary"):
     buf = io.BytesIO()
     final_df.to_csv(buf, index=False, header=False, encoding="utf-8-sig")
     st.download_button("CSVダウンロード 📥", buf.getvalue(), f"{shop_name}_setting.csv", "text/csv")
-
-
