@@ -186,7 +186,7 @@ with col_apply1:
             st.session_state.ts_list.append({"zone": tz, "config": cfg}); st.rerun()
 
 with col_apply2:
-    st.subheader("特異日・期間設定 (正月など) ")
+    st.subheader("特異日・期間設定")
     with st.form("period_v37"):
         pz = st.selectbox("対象ゾーン ", v_zones)
         p_tt = st.selectbox("適用タイムテーブル ", v_tt_names)
@@ -231,4 +231,5 @@ if st.button("プレビューを確認してCSV作成 💾", type="primary"):
     buf = io.BytesIO()
     final_df.to_csv(buf, index=False, header=False, encoding="utf-8-sig")
     st.download_button("CSVダウンロード 📥", buf.getvalue(), f"{shop_name}_setting.csv", "text/csv")
+
 
