@@ -11,7 +11,6 @@ ROW1 = [None] * NUM_COLS
 ROW1[0], ROW1[4], ROW1[9], ROW1[17], ROW1[197], ROW1[207] = 'Zone情報', 'Group情報', 'Scene情報', 'Timetable情報', 'Timetable-schedule情報', 'Timetable期間/特異日情報'
 ROW3 = [None] * NUM_COLS
 ROW3[0:3], ROW3[4:8] = ['[zone]', '[id]', '[fade]'], ['[group]', '[id]', '[type]', '[zone]']
-# O列の[fresh-key]を削除し、その分を詰めています
 ROW3[9:16] = ['[scene]', '[id]', '[dimming]', '[color]', '[perform]', '[zone]', '[group]']
 ROW3[17:22] = ['[zone-timetable]', '[id]', '[zone]', '[sun-start-scene]', '[sun-end-scene]']
 for i in range(22, 196, 2): ROW3[i], ROW3[i+1] = '[time]', '[scene]'
@@ -21,7 +20,6 @@ CSV_HEADER = [ROW1, [None] * NUM_COLS, ROW3]
 st.set_page_config(page_title="設定データ作成アプリ", layout="wide")
 st.title("設定データ作成アプリ ⚙️")
 
-# セッション管理
 states = {
     'z_list': [], 'g_list': [], 's_list': [], 'tt_list': [],
     'tt_slots_count': 1, 'auto_scene_count': 2
@@ -48,8 +46,8 @@ with st.form("z_form", clear_on_submit=True):
 if st.session_state.z_list:
     st.table(pd.DataFrame(st.session_state.z_list).assign(No=range(1, len(st.session_state.z_list)+1)).set_index('No'))
     col_z_del1, col_z_del2 = st.columns([1, 4])
-    del_z_idx = col_z_del1.number_input("削除するNo", 1, len(st.session_state.z_list), key="del_z_idx")
-    if col_z_del2.button("選択したゾーンを削除（決定）"):
+    del_z_idx = col_z_del1.number_input("削除No", 1, len(st.session_state.z_list), key="del_z_idx")
+    if col_z_del2.button("ゾーン削除確定"):
         st.session_state.z_list.pop(del_z_idx - 1); st.rerun()
 
 # --- 3. グループ登録 ---
@@ -68,8 +66,8 @@ with st.form("g_form", clear_on_submit=True):
 if st.session_state.g_list:
     st.table(pd.DataFrame(st.session_state.g_list).assign(No=range(1, len(st.session_state.g_list)+1)).set_index('No'))
     col_g_del1, col_g_del2 = st.columns([1, 4])
-    del_g_idx = col_g_del1.number_input("削除するNo", 1, len(st.session_state.g_list), key="del_g_idx")
-    if col_g_del2.button("選択したグループを削除（決定）"):
+    del_g_idx = col_g_del1.number_input("削除No", 1, len(st.session_state.g_list), key="del_g_idx")
+    if col_g_del2.button("グループ削除確定"):
         st.session_state.g_list.pop(del_g_idx - 1); st.rerun()
 
 st.divider()
@@ -89,7 +87,7 @@ else:
 
 init_s = st.session_state.s_list[selected_s_idx-1] if selected_s_idx > 0 else {"シーン名": "", "紐づけるグループ名": "", "調光": 100, "ケルビン": "", "Syncaカラー": ""}
 
-with st.form("s_form_v29"):
+with st.form("s_form_v30"):
     c1, c2, c3 = st.columns([2, 2, 1])
     s_name = c1.text_input("シーン名", value=init_s["シーン名"])
     target_g = c2.selectbox("対象グループ", options=v_groups, index=v_groups.index(init_s["紐づけるグループ名"]) if init_s["紐づけるグループ名"] in v_groups else 0)
@@ -108,7 +106,7 @@ with st.form("s_form_v29"):
             else: st.session_state.s_list[selected_s_idx-1] = new_data
             st.rerun()
     if selected_s_idx > 0:
-        if col_s_btn2.form_submit_button("選択したシーンを削除（決定）"):
+        if col_s_btn2.form_submit_button("シーン削除確定"):
             st.session_state.s_list.pop(selected_s_idx - 1); st.rerun()
 
 st.divider()
@@ -118,15 +116,15 @@ st.header("5. タイムテーブル登録")
 v_scenes = [""] + sorted(list(set([s["シーン名"] for s in st.session_state.s_list])))
 
 # 繰り返し自動生成
-with st.expander("✨ スケジュール自動作成 (繰り返しパターン生成)"):
-    with st.form("auto_tt"):
+with st.expander("✨ 繰り返しスケジュールを自動作成"):
+    with st.form("auto_tt_v30"):
         col_a1, col_a2, col_a3, col_a4 = st.columns(4)
         auto_z = col_a1.selectbox("対象ゾーン", options=v_zones)
         start_t = col_a2.text_input("開始時間", "10:00")
         end_t = col_a3.text_input("終了時間", "21:00")
         interval = col_a4.number_input("間隔(分)", 1, 120, 8)
         
-        st.write("▼ 繰り返すシーンの順番")
+        st.write("▼ 順番に繰り返すシーンを選択")
         auto_scenes = []
         scene_cols = st.columns(4)
         for i in range(st.session_state.auto_scene_count):
@@ -134,7 +132,7 @@ with st.expander("✨ スケジュール自動作成 (繰り返しパターン�
                 as_val = st.selectbox(f"シーン {i+1}", options=v_scenes, key=f"auto_s_{i}")
                 if as_val: auto_scenes.append(as_val)
         
-        if st.form_submit_button("スケジュールを計算してセット"):
+        if st.form_submit_button("スケジュールを計算"):
             if auto_scenes:
                 try:
                     curr = datetime.strptime(start_t, "%H:%M")
@@ -148,22 +146,24 @@ with st.expander("✨ スケジュール自動作成 (繰り返しパターン�
                     st.session_state.tt_slots_count = len(auto_slots)
                     st.rerun()
                 except: st.error("形式エラー(HH:MM)")
-        
     c_as1, c_as2 = st.columns([1, 10])
-    if c_as1.button("➕ 追加"): st.session_state.auto_scene_count += 1; st.rerun()
-    if st.session_state.auto_scene_count > 1:
-        if c_as2.button("➖ 削減"): st.session_state.auto_scene_count -= 1; st.rerun()
+    if c_as1.button("➕ シーン追加"): st.session_state.auto_scene_count += 1; st.rerun()
+    if c_as2.button("➖ シーン削減") and st.session_state.auto_scene_count > 1: st.session_state.auto_scene_count -= 1; st.rerun()
 
 # タイムテーブル本体フォーム
-with st.form("tt_main_form"):
+with st.form("tt_main_v30"):
     ct1, ct2 = st.columns(2)
     tt_name = ct1.text_input("タイムテーブル名")
     tt_zone = ct2.selectbox("対象ゾーン ", options=v_zones, index=v_zones.index(st.session_state.get("temp_tt_zone", "")) if st.session_state.get("temp_tt_zone", "") in v_zones else 0)
     
+    st.write("☀️ **日出・日没の設定**")
+    csun1, csun2 = st.columns(2)
+    sun_start = csun1.selectbox("日出シーン [sun-start-scene]", options=v_scenes)
+    sun_end = csun2.selectbox("日没シーン [sun-end-scene]", options=v_scenes)
+
     st.write("▼ スケジュール詳細")
     base_data = st.session_state.get("temp_slots", [])
     final_slots = []
-    
     for i in range(st.session_state.tt_slots_count):
         c_time, c_scene = st.columns([1, 2])
         def_t = base_data[i]["time"] if i < len(base_data) else ""
@@ -172,24 +172,20 @@ with st.form("tt_main_form"):
         s_val = c_scene.selectbox(f"シーン {i+1}", options=v_scenes, index=v_scenes.index(def_s) if def_s in v_scenes else 0, key=f"tt_s_{i}")
         if t_val and s_val: final_slots.append({"time": t_val, "scene": s_val})
             
-    if st.form_submit_button("タイムテーブルをリストに保存"):
+    if st.form_submit_button("タイムテーブルを保存"):
         if tt_name and tt_zone and final_slots:
-            st.session_state.tt_list.append({"tt_name": tt_name, "zone": tt_zone, "slots": final_slots})
-            st.session_state.tt_slots_count = 1
-            st.session_state.temp_tt_zone = ""
+            st.session_state.tt_list.append({"tt_name": tt_name, "zone": tt_zone, "sun_start": sun_start, "sun_end": sun_end, "slots": final_slots})
+            st.session_state.tt_slots_count = 1; st.session_state.temp_tt_zone = ""
             if "temp_slots" in st.session_state: del st.session_state.temp_slots
             st.rerun()
 
 if st.button("➕ 手動スロットを追加"): st.session_state.tt_slots_count += 1; st.rerun()
 
 if st.session_state.tt_list:
-    st.subheader("現在のタイムテーブル一覧")
-    tt_disp = pd.DataFrame([{"名": tt["tt_name"], "ゾーン": tt["zone"], "数": len(tt['slots'])} for tt in st.session_state.tt_list])
-    tt_disp.index += 1
-    st.table(tt_disp)
+    st.table(pd.DataFrame([{"名": tt["tt_name"], "ゾーン": tt["zone"], "日出": tt["sun_start"], "日没": tt["sun_end"]} for tt in st.session_state.tt_list]).assign(No=range(1, len(st.session_state.tt_list)+1)).set_index('No'))
     col_tt_del1, col_tt_del2 = st.columns([1, 4])
-    del_tt_idx = col_tt_del1.number_input("削除するNo", 1, len(st.session_state.tt_list), key="del_tt_idx")
-    if col_tt_del2.button("選択したタイムテーブルを削除（決定）"):
+    del_tt_idx = col_tt_del1.number_input("削除No", 1, len(st.session_state.tt_list), key="del_tt_idx")
+    if col_tt_del2.button("タイムテーブル削除確定"):
         st.session_state.tt_list.pop(del_tt_idx - 1); st.rerun()
 
 st.divider()
@@ -207,10 +203,10 @@ if st.button("プレビューを確認してCSV作成", type="primary"):
     for i, r in sf_f.iterrows():
         sn = r["シーン名"]
         if sn not in scene_id_db: scene_id_db[sn] = sid_cnt; sid_cnt += 1
-        # [scene][id][dimming][color][perform][zone][group]
         mat.iloc[i, 9:16] = [sn, scene_id_db[sn], r["調光"], r["ケルビン"], r["Syncaカラー"], r["紐づけるゾーン名"], r["紐づけるグループ名"]]
     for i, tt in enumerate(tt_f):
-        mat.iloc[i, 17:20] = [tt["tt_name"], 12289+i, tt["zone"]]
+        # 17:zone-timetable, 18:id, 19:zone, 20:sun-start, 21:sun-end
+        mat.iloc[i, 17:22] = [tt["tt_name"], 12289+i, tt["zone"], tt["sun_start"], tt["sun_end"]]
         c_idx = 22
         for slot in tt["slots"]:
             if c_idx < 196: mat.iloc[i, c_idx], mat.iloc[i, c_idx+1] = slot["time"], slot["scene"]; c_idx += 2
