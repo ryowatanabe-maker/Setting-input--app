@@ -203,4 +203,21 @@ if st.button("プレビューを確認してCSV作成", type="primary"):
     gf_f = pd.DataFrame(st.session_state.g_list)
     sf_f = pd.DataFrame(st.session_state.s_list)
     tt_f = st.session_state.tt_list
-    mat = pd.DataFrame(index=range(max(len(zf_f), len(gf_f), len(sf_f
+    mat = pd.DataFrame(index=range(max(len(zf_f), len(gf_f), len(sf_f), len(tt_f), 1)), columns=range(NUM_COLS))
+    for i, r in zf_f.iterrows(): mat.iloc[i, 0:3] = [r["ゾーン名"], 4097+i, r["フェード秒"]]
+    for i, r in gf_f.iterrows(): mat.iloc[i, 4:8] = [r["グループ名"], 32770+i, GROUP_TYPE_MAP.get(r["グループタイプ"], "1ch"), r["紐づけるゾーン名"]]
+    scene_id_db = {}; sid_cnt = 8193
+    for i, r in sf_f.iterrows():
+        sn = r["シーン名"]
+        if sn not in scene_id_db: scene_id_db[sn] = sid_cnt; sid_cnt += 1
+        mat.iloc[i, 9:17] = [sn, scene_id_db[sn], r["調光"], r["ケルビン"], r["Syncaカラー"], r.get("FreshKey",""), r["紐づけるゾーン名"], r["紐づけるグループ名"]]
+    for i, tt in enumerate(tt_f):
+        mat.iloc[i, 17:20] = [tt["tt_name"], 12289+i, tt["zone"]]
+        c_idx = 22
+        for slot in tt["slots"]:
+            if c_idx < 196: mat.iloc[i, c_idx], mat.iloc[i, c_idx+1] = slot["time"], slot["scene"]; c_idx += 2
+    final_df = pd.concat([pd.DataFrame(CSV_HEADER), mat], ignore_index=True)
+    st.dataframe(final_df.iloc[3:].dropna(how='all', axis=0), use_container_width=True)
+    buf = io.BytesIO()
+    final_df.to_csv(buf, index=False, header=False, encoding="utf-8-sig")
+    st.download_button("📥 CSVダウンロード", buf.getvalue(), f"{shop_name}_setting.csv", "text/csv")
