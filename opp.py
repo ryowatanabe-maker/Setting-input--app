@@ -35,7 +35,7 @@ st.divider()
 
 # 2. ゾーン登録
 st.header("2. ゾーン登録 🌐")
-with st.form("z_form_v44", clear_on_submit=True):
+with st.form("z_form_v45", clear_on_submit=True):
     col_z1, col_z2 = st.columns(2)
     z_name = col_z1.text_input("ゾーン名")
     z_fade = col_z2.number_input("フェード秒", 0, 60, 0)
@@ -43,99 +43,85 @@ with st.form("z_form_v44", clear_on_submit=True):
         if z_name:
             st.session_state.z_list.append({"ゾーン名": z_name, "フェード秒": z_fade})
             st.rerun()
-if st.session_state.z_list:
-    st.table(pd.DataFrame(st.session_state.z_list).assign(No=range(1, len(st.session_state.z_list)+1)).set_index('No'))
-    del_z_idx = st.number_input("ゾーン削除No", 0, len(st.session_state.z_list), 0, key="dz")
-    if st.button("ゾーン削除 🗑️") and del_z_idx > 0: st.session_state.z_list.pop(del_z_idx - 1); st.rerun()
 
 # 3. グループ登録
 st.header("3. グループ登録 💡")
 v_zones = [""] + [z["ゾーン名"] for z in st.session_state.z_list]
-with st.form("g_form_v44", clear_on_submit=True):
+with st.form("g_form_v45", clear_on_submit=True):
     col_g1, col_g2, col_g3 = st.columns(3)
-    g_name, g_type, g_zone = col_g1.text_input("グループ名"), col_g2.selectbox("タイプ", list(GROUP_TYPE_MAP.keys())), col_g3.selectbox("紐づけるゾーン", options=v_zones)
+    g_n, g_t, g_z = col_g1.text_input("グループ名"), col_g2.selectbox("タイプ", list(GROUP_TYPE_MAP.keys())), col_g3.selectbox("紐づけるゾーン", options=v_zones)
     if st.form_submit_button("グループを追加 ➕"):
-        if g_name and g_zone:
-            st.session_state.g_list.append({"グループ名": g_name, "グループタイプ": g_type, "紐づけるゾーン名": g_zone})
+        if g_n and g_z:
+            st.session_state.g_list.append({"グループ名": g_n, "グループタイプ": g_t, "紐づけるゾーン名": g_z})
             st.rerun()
-if st.session_state.g_list:
-    st.table(pd.DataFrame(st.session_state.g_list).assign(No=range(1, len(st.session_state.g_list)+1)).set_index('No'))
-    del_g_idx = st.number_input("グループ削除No", 0, len(st.session_state.g_list), 0, key="dg")
-    if st.button("グループ削除 🗑️", key="dg_btn"): st.session_state.g_list.pop(del_g_idx - 1); st.rerun()
 
 st.divider()
 
-# 4. シーン登録（ゾーン選択・一括設定方式）
+# 4. シーン登録（スライダー＋数値入力同期方式）
 st.header("4. シーン登録・編集 🎬")
 if not st.session_state.z_list:
     st.warning("先にゾーンを登録してください。")
 else:
-    # 既存シーンの表示と削除
+    # 既存シーンの表示
     if st.session_state.s_list:
         s_df = pd.DataFrame(st.session_state.s_list)
-        # 表示用に整理
         disp_df = s_df.groupby(["シーン名", "紐づけるゾーン名"]).size().reset_index().rename(columns={0:"グループ数"})
         disp_df.index += 1
         st.write("▼ 登録済みシーン一覧")
         st.table(disp_df)
-        del_s_name = st.text_input("削除したいシーン名を入力")
-        if st.button("指定したシーンを全削除 🗑️"):
-            st.session_state.s_list = [s for s in st.session_state.s_list if s["シーン名"] != del_s_name]
-            st.rerun()
 
-    st.subheader("新規シーン作成")
+    st.subheader("シーン作成（ゾーン一括設定）")
     with st.container(border=True):
         col_sn1, col_sn2 = st.columns(2)
-        new_scene_name = col_sn1.text_input("作成するシーンの名前 (例: 日中, 閉店時)")
-        sel_zone_for_scene = col_sn2.selectbox("対象ゾーンを選択", options=v_zones)
+        new_scene_name = col_sn1.text_input("シーン名 (例: 全点灯)")
+        sel_zone_for_scene = col_sn2.selectbox("対象ゾーン", options=v_zones)
 
         if sel_zone_for_scene:
-            # 選択されたゾーンに紐づくグループを抽出
             target_groups = [g for g in st.session_state.g_list if g["紐づけるゾーン名"] == sel_zone_for_scene]
             
             if not target_groups:
                 st.info("このゾーンにはグループが登録されていません。")
             else:
-                st.write(f"--- {sel_zone_for_scene} の各グループ設定 ---")
+                st.write(f"--- {sel_zone_for_scene} の各照明設定 ---")
                 scene_results = []
                 for g in target_groups:
-                    g_name = g["グループ名"]
-                    g_type = g["グループタイプ"]
+                    g_n = g["グループ名"]
+                    g_t = g["グループタイプ"]
                     
-                    st.write(f"**{g_name}** ({g_type})")
-                    c_dim, c_color, c_synca = st.columns([3, 2, 2])
+                    st.write(f"**{g_n}**")
+                    c_dim_s, c_dim_n, c_color, c_synca = st.columns([3, 1, 2, 2])
                     
-                    dim_val = c_dim.slider("調光率 (%)", 0, 100, 100, key=f"dim_{g_name}")
+                    # スライダーと数値入力を同期
+                    dim_val = c_dim_s.slider(f"調光 (%)", 0, 100, 100, key=f"s_dim_{g_n}")
+                    dim_num = c_dim_n.number_input(f"入力", 0, 100, dim_val, key=f"n_dim_{g_n}")
+                    
+                    # 数値入力が優先されるように調整
+                    final_dim = dim_num
                     
                     k_val = ""
-                    if g_type != "調光":
-                        k_val = c_color.text_input("ケルビン (K)", value="3500", key=f"k_{g_name}")
+                    if g_t != "調光":
+                        k_val = c_color.text_input("ケルビン (K)", value="3500", key=f"k_{g_n}")
                     
                     synca_val = ""
-                    if "Synca" in g_type:
-                        r_v = c_synca.selectbox("Synca 行", ["-"] + list(range(1, 12)), key=f"sr_{g_name}")
-                        c_v = c_synca.selectbox("Synca 列", ["-"] + list(range(1, 12)), key=f"sc_{g_name}")
+                    if "Synca" in g_t:
+                        r_v = c_synca.selectbox("行", ["-"] + list(range(1, 12)), key=f"sr_{g_n}")
+                        c_v = c_synca.selectbox("列", ["-"] + list(range(1, 12)), key=f"sc_{g_n}")
                         if r_v != "-" and c_v != "-":
                             synca_val = f"'{r_v}-{c_v}"
 
                     scene_results.append({
-                        "シーン名": new_scene_name,
-                        "紐づけるグループ名": g_name,
-                        "紐づけるゾーン名": sel_zone_for_scene,
-                        "調光": dim_val,
-                        "ケルビン": k_val if not synca_val else "",
-                        "Syncaカラー": synca_val
+                        "シーン名": new_scene_name, "紐づけるグループ名": g_n, "紐づけるゾーン名": sel_zone_for_scene,
+                        "調光": final_dim, "ケルビン": k_val if not synca_val else "", "Syncaカラー": synca_val
                     })
 
-                if st.button("このゾーンのシーンを保存 ✅"):
+                if st.button("このゾーンのシーンを保存 ✅", use_container_width=True):
                     if not new_scene_name:
                         st.error("シーン名を入力してください。")
                     else:
-                        # 同名シーンが既にあれば上書き（削除して追加）
                         st.session_state.s_list = [s for s in st.session_state.s_list if not (s["シーン名"] == new_scene_name and s["紐づけるゾーン名"] == sel_zone_for_scene)]
                         st.session_state.s_list.extend(scene_results)
-                        st.success(f"シーン「{new_scene_name}」を保存しました。")
-                        st.rerun()
+                        st.success(f"成功: シーン「{new_scene_name}」を【{sel_zone_for_scene}】に保存しました。")
+                        # メッセージを表示したままにしたいのでrerunはさせず、成功メッセージを出す
 
 st.divider()
 
@@ -143,9 +129,9 @@ st.divider()
 st.header("5. タイムテーブル作成 ⏳")
 v_scenes = [""] + sorted(list(set([s["シーン名"] for s in st.session_state.s_list])))
 with st.expander("スケジュール自動作成"):
-    with st.form("at_v44"):
+    with st.form("at_v45"):
         ca1, ca2, ca3, ca4 = st.columns(4)
-        az, stt, edt, inv = ca1.selectbox("対象ゾーン ", v_zones), ca2.text_input("開始", "10:00"), ca3.text_input("終了", "21:00"), ca4.number_input("間隔(分) ※6分以上", 6, 120, 8)
+        az, stt, edt, inv = ca1.selectbox("対象ゾーン ", v_zones), ca2.text_input("開始", "10:00"), ca3.text_input("終了", "21:00"), ca4.number_input("間隔(分)", 6, 120, 8)
         ascs = []
         acols = st.columns(4)
         for i in range(st.session_state.auto_scene_count):
@@ -162,9 +148,8 @@ with st.expander("スケジュール自動作成"):
                 st.session_state.temp_slots, st.session_state.temp_tt_zone, st.session_state.tt_slots_count = slots, az, len(slots)
                 st.rerun()
             except: st.error("時刻形式エラー")
-    if st.button("繰り返し用枠追加 ➕"): st.session_state.auto_scene_count += 1; st.rerun()
 
-with st.form("tt_v44"):
+with st.form("tt_v45"):
     ct1, ct2 = st.columns(2)
     tt_n, tt_z = ct1.text_input("タイムテーブル名", value="通常"), ct2.selectbox("対象ゾーン  ", v_zones, index=v_zones.index(st.session_state.get("temp_tt_zone", "")) if st.session_state.get("temp_tt_zone", "") in v_zones else 0)
     cs1, cs2 = st.columns(2)
@@ -177,21 +162,21 @@ with st.form("tt_v44"):
         if tv and sv: f_slots.append({"time": tv, "scene": sv})
     if st.form_submit_button("タイムテーブル保存 ✅"):
         st.session_state.tt_list.append({"tt_name": tt_n, "zone": tt_z, "sun_start": ss, "sun_end": se, "slots": f_slots})
-        st.session_state.tt_slots_count = 1; st.rerun()
+        st.rerun()
 
 if st.session_state.tt_list:
-    st.subheader("タイムテーブル詳細確認")
+    st.subheader("タイムテーブル一覧（クリックで詳細）")
     tt_sum_df = pd.DataFrame([{"タイムテーブル名": x["tt_name"], "ゾーン": x["zone"], "登録数": len(x["slots"])} for x in st.session_state.tt_list])
     ev = st.dataframe(tt_sum_df, use_container_width=True, on_select="rerun", selection_mode="single-row")
     if len(ev.selection.rows) > 0:
         sel = st.session_state.tt_list[ev.selection.rows[0]]
-        with st.expander(f"{sel['tt_name']} の詳細", expanded=True):
+        with st.expander(f"{sel['tt_name']} 内容", expanded=True):
             st.table(pd.DataFrame(sel['slots']))
             if st.button("削除 🗑️"): st.session_state.tt_list.pop(ev.selection.rows[0]); st.rerun()
 
 st.divider()
 
-# 6. 適用・特異日
+# 6. スケジュール適用・特異日設定
 st.header("6. スケジュール適用・特異日設定 🗓️")
 tt_to_zone = {tt["tt_name"]: tt["zone"] for tt in st.session_state.tt_list}
 v_tt_names = [""] + list(tt_to_zone.keys())
@@ -206,7 +191,7 @@ with col_a1:
             dcols = st.columns(7); dnames = ["月", "火", "水", "木", "金", "土", "日"]
             for i, d in enumerate(dnames):
                 if dcols[i].checkbox(d): checked_days.append(d)
-        if st.form_submit_button("適用を保存 ✅"):
+        if st.form_submit_button("適用保存 ✅"):
             if target_tt:
                 tz = tt_to_zone[target_tt]
                 idx = next((i for i, x in enumerate(st.session_state.ts_list) if x["zone"] == tz), None)
@@ -218,6 +203,7 @@ with col_a1:
                     dmap = {"月":"mon", "火":"tue", "水":"wed", "木":"thu", "金":"fri", "土":"sat", "日":"sun"}
                     for d in checked_days: st.session_state.ts_list[idx]["config"][dmap[d]] = target_tt
                 st.rerun()
+
 with col_a2:
     st.subheader("特異日・期間設定 🎌")
     with st.form("period_vfinal"):
@@ -235,11 +221,10 @@ if st.session_state.ts_list or st.session_state.period_list:
     st.subheader("現在の適用状況")
     if st.session_state.ts_list:
         st.write("**通常設定**")
-        st.table(pd.DataFrame([{"ゾーン": x["zone"], "毎日": x["config"]["daily"], "曜日別": ", ".join([f"{jp}:{x['config'][en]}" for en, jp in {"mon":"月", "tue":"火", "wed":"水", "thu":"木", "fri":"金", "sat":"土", "sun":"日"}.items() if x['config'][en]])} for x in st.session_state.ts_list]))
+        st.table(pd.DataFrame([{"ゾーン": x["zone"], "毎日": x["config"]["daily"], "曜日別設定": ", ".join([f"{jp}:{x['config'][en]}" for en, jp in {"mon":"月", "tue":"火", "wed":"水", "thu":"木", "fri":"金", "sat":"土", "sun":"日"}.items() if x['config'][en]])} for x in st.session_state.ts_list]))
     if st.session_state.period_list:
         st.write("**特異日設定**")
         st.table(pd.DataFrame(st.session_state.period_list))
-    st.caption("※下のボタンはスケジュールの割り当てのみをリセットします。")
     if st.button("スケジュールの割り当てをリセット 🔄", use_container_width=True): 
         st.session_state.ts_list = []; st.session_state.period_list = []; st.rerun()
 
@@ -249,7 +234,7 @@ st.divider()
 if st.button("プレビューを確認してCSV作成 💾", type="primary"):
     zf, gf, sf, ttf, tsf, pf = pd.DataFrame(st.session_state.z_list), pd.DataFrame(st.session_state.g_list), pd.DataFrame(st.session_state.s_list), st.session_state.tt_list, st.session_state.ts_list, st.session_state.period_list
     mat = pd.DataFrame(index=range(max(len(zf), len(gf), len(sf), len(ttf), 100)), columns=range(NUM_COLS))
-    for i, r in zf.iterrows(): mat.iloc[i, 0:3] = [r["ゾーン名"], 4097+i, r["フェード秒"]]
+    for i, r in zf.iterrows(): mat.iloc[i, 0:3] = [r["ゾーン名"], 4097+i, r["フェ秒"]]
     for i, r in gf.iterrows(): mat.iloc[i, 4:8] = [r["グループ名"], 32770+i, GROUP_TYPE_MAP.get(r["グループタイプ"], "1ch"), r["紐づけるゾーン名"]]
     s_db, s_cnt = {}, 8193
     for i, r in sf.iterrows():
