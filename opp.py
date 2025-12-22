@@ -21,7 +21,7 @@ CSV_HEADER = [ROW1, [None] * NUM_COLS, ROW3]
 
 # --- 2. アプリ設定とデータ初期化 ---
 st.set_page_config(page_title="設定データ作成アプリ", layout="wide")
-st.title("設定データ作成アプリ ⚙️")
+st.title("設定データ作成アプリ(ベータ版) ⚙️")
 
 # セッション管理
 for key in ['z_list', 'g_list', 's_list', 'tt_list', 'ts_list', 'period_list']:
@@ -264,4 +264,5 @@ if st.button("CSV作成・プレビュー 💾", type="primary"):
     buf = io.BytesIO()
     pd.concat([pd.DataFrame(CSV_HEADER), mat], ignore_index=True).to_csv(buf, index=False, header=False, encoding="utf-8-sig")
     st.download_button("ダウンロード 📥", buf.getvalue(), f"{shop_name}_setting.csv", "text/csv")
+
 
