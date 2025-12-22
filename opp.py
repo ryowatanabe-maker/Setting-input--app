@@ -122,7 +122,7 @@ with st.container(border=True):
                 "調光": dim_num, "ケルビン": k_val if not synca_val else "", "Syncaカラー": synca_val
             })
 
-        if st.button("履歴に登録・上書き保存 ✅", use_container_width=True):
+        if st.button("登録・上書き保存 ✅", use_container_width=True):
             if new_scene_name:
                 st.session_state.s_list = [s for s in st.session_state.s_list if not (s["シーン名"] == new_scene_name and s["紐づけるゾーン名"] == sel_zone_for_scene)]
                 st.session_state.s_list.extend(scene_results)
@@ -255,4 +255,5 @@ if st.button("CSV作成・ダウンロード 💾", type="primary"):
     buf = io.BytesIO()
     pd.concat([pd.DataFrame(CSV_HEADER), mat], ignore_index=True).to_csv(buf, index=False, header=False, encoding="utf-8-sig")
     st.download_button("ダウンロード 📥", buf.getvalue(), f"{shop_name}_setting.csv", "text/csv")
+
 
