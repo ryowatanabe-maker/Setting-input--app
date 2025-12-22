@@ -113,8 +113,8 @@ with st.container(border=True):
                         st.image("synca_palette.png", caption="Synca色見本（行-列）", use_container_width=True)
                     
                     c_s1, c_s2 = st.columns(2)
-                    rv = c_s1.selectbox("行 (1-11)", ["-"] + list(range(1, 12)), key=f"sr_{gn}")
-                    cv = c_s2.selectbox("列 (1-11)", ["-"] + list(range(1, 12)), key=f"sc_{gn}")
+                    rv = c_s1.selectbox("X軸 (1-11)", ["-"] + list(range(1, 12)), key=f"sr_{gn}")
+                    cv = c_s2.selectbox("Y軸 (1-11)", ["-"] + list(range(1, 12)), key=f"sc_{gn}")
                     if rv != "-" and cv != "-": synca_val = f"'{rv}-{cv}"
 
             scene_results.append({
@@ -255,5 +255,6 @@ if st.button("CSV作成・ダウンロード 💾", type="primary"):
     buf = io.BytesIO()
     pd.concat([pd.DataFrame(CSV_HEADER), mat], ignore_index=True).to_csv(buf, index=False, header=False, encoding="utf-8-sig")
     st.download_button("ダウンロード 📥", buf.getvalue(), f"{shop_name}_setting.csv", "text/csv")
+
 
 
