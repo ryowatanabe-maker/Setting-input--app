@@ -33,12 +33,12 @@ if 'auto_scene_count' not in st.session_state: st.session_state.auto_scene_count
 if 'scene_edit_buf' not in st.session_state: st.session_state.scene_edit_buf = {}
 
 # --- 3. UIセクション ---
-st.header("1. 店舗名入力 🏢")
+st.header("1. 店舗名入力 ")
 shop_name = st.text_input("店舗名", value="")
 st.divider()
 
 # 2. ゾーン登録
-st.header("2. ゾーン登録 🌐")
+st.header("2. ゾーン登録 ")
 with st.form("z_form_v48", clear_on_submit=True):
     col_z1, col_z2 = st.columns(2)
     z_name = col_z1.text_input("ゾーン名")
@@ -51,7 +51,7 @@ if st.session_state.z_list:
     st.table(pd.DataFrame(st.session_state.z_list).assign(No=range(1, len(st.session_state.z_list)+1)).set_index('No'))
 
 # 3. グループ登録
-st.header("3. グループ登録 💡")
+st.header("3. グループ登録 ")
 v_zones = [""] + [z["ゾーン名"] for z in st.session_state.z_list]
 with st.form("g_form_v48", clear_on_submit=True):
     col_g1, col_g2, col_g3 = st.columns(3)
@@ -66,7 +66,7 @@ if st.session_state.g_list:
 st.divider()
 
 # 4. シーン登録（数値入力のみ・編集機能）
-st.header("4. シーン登録・編集 🎬")
+st.header("4. シーン登録・編集 ")
 if st.session_state.s_list:
     s_df_hist = pd.DataFrame(st.session_state.s_list)
     disp_df = s_df_hist.groupby(["シーン名", "紐づけるゾーン名"]).size().reset_index().rename(columns={0:"グループ数"})
@@ -125,7 +125,7 @@ with st.container(border=True):
                 "調光": dim_num, "ケルビン": k_val if not synca_val else "", "Syncaカラー": synca_val
             })
 
-        if st.button("履歴に登録・上書き保存 ✅", use_container_width=True):
+        if st.button("登録・上書き保存 ✅", use_container_width=True):
             if new_scene_name:
                 st.session_state.s_list = [s for s in st.session_state.s_list if not (s["シーン名"] == new_scene_name and s["紐づけるゾーン名"] == sel_zone_for_scene)]
                 st.session_state.s_list.extend(scene_results)
@@ -135,7 +135,7 @@ with st.container(border=True):
 st.divider()
 
 # --- 5. タイムテーブル作成 ---
-st.header("5. タイムテーブル作成 ⏳")
+st.header("5. タイムテーブル作成 ")
 v_scenes = [""] + sorted(list(set([s["シーン名"] for s in st.session_state.s_list])))
 with st.expander("スケジュール自動作成"):
     with st.form("at_v48"):
@@ -186,7 +186,7 @@ if st.session_state.tt_list:
 st.divider()
 
 # 6. スケジュール適用
-st.header("6. スケジュール適用・特異日設定 🗓️")
+st.header("6. スケジュール適用・特異日設定 ")
 tt_to_zone = {tt["tt_name"]: tt["zone"] for tt in st.session_state.tt_list}
 v_tt_names = [""] + list(tt_to_zone.keys())
 col_a1, col_a2 = st.columns(2)
@@ -213,7 +213,7 @@ with col_a1:
                     for d in checked_days: st.session_state.ts_list[idx]["config"][dmap[d]] = target_tt
                 st.rerun()
 with col_a2:
-    st.subheader("特異日・期間設定 🎌")
+    st.subheader("特異日・期間設定 ")
     with st.form("period_v48"):
         p_n = st.text_input("特異日名")
         pt = st.selectbox("タイムテーブル案 ", v_tt_names)
@@ -264,3 +264,4 @@ if st.button("CSV作成・プレビュー 💾", type="primary"):
     buf = io.BytesIO()
     pd.concat([pd.DataFrame(CSV_HEADER), mat], ignore_index=True).to_csv(buf, index=False, header=False, encoding="utf-8-sig")
     st.download_button("ダウンロード 📥", buf.getvalue(), f"{shop_name}_setting.csv", "text/csv")
+
