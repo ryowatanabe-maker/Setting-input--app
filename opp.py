@@ -131,29 +131,54 @@ with st.container(border=True):
 
 st.divider()
 
-# 5. タイムテーブル作成（追加ボタンを修正）
+# --- 5. タイムテーブル作成（自動作成シーン追加機能付き） ---
 st.header("5. タイムテーブル作成 ")
 v_scenes = [""] + sorted(list(set([s["シーン名"] for s in st.session_state.s_list])))
+
 with st.expander("スケジュール自動作成"):
-    with st.form("at_v51"):
+    # フォームの外に「シーン枠を増やすボタン」を配置
+    if st.button("繰り返すシーン枠を増やす ➕"):
+        st.session_state.auto_scene_count += 1
+        st.rerun()
+
+    with st.form("at_v52"):
         ca1, ca2, ca3, ca4 = st.columns(4)
-        az, stt, edt, inv = ca1.selectbox("対象ゾーン ", v_zones), ca2.text_input("開始", "10:00"), ca3.text_input("終了", "21:00"), ca4.number_input("間隔(分)", 6, 120, 8)
+        az = ca1.selectbox("対象ゾーン ", v_zones)
+        stt = ca2.text_input("開始時刻", "10:00")
+        edt = ca3.text_input("終了時刻", "21:00")
+        inv = ca4.number_input("間隔(分)", 6, 120, 30) # 30分間隔などを想定
+
+        st.write("--- 繰り返すシーンの順番 ---")
         ascs = []
+        # 設定された数だけ入力枠を表示（4列に並べる）
         acols = st.columns(4)
         for i in range(st.session_state.auto_scene_count):
             with acols[i % 4]:
-                v = st.selectbox(f"シーン{i+1}", v_scenes, key=f"as_{i}")
+                v = st.selectbox(f"シーン{i+1}", v_scenes, key=f"as_box_{i}")
                 if v: ascs.append(v)
-        if st.form_submit_button("セット"):
-            try:
-                curr, limit = datetime.strptime(stt, "%H:%M"), datetime.strptime(edt, "%H:%M")
-                slots, idx = [], 0
-                while curr <= limit:
-                    slots.append({"time": curr.strftime("%H:%M"), "scene": ascs[idx % len(ascs)]})
-                    curr += timedelta(minutes=inv); idx += 1
-                st.session_state.temp_slots, st.session_state.temp_tt_zone, st.session_state.tt_slots_count = slots, az, len(slots)
-                st.rerun()
-            except: st.error("時刻形式エラー")
+
+        if st.form_submit_button("スケジュールを生成してセット 🪄"):
+            if not ascs:
+                st.error("シーンを1つ以上選択してください")
+            else:
+                try:
+                    curr = datetime.strptime(stt, "%H:%M")
+                    limit = datetime.strptime(edt, "%H:%M")
+                    slots, idx = [], 0
+                    while curr <= limit:
+                        # 選択されたシーンを順番にループさせる
+                        slots.append({"time": curr.strftime("%H:%M"), "scene": ascs[idx % len(ascs)]})
+                        curr += timedelta(minutes=inv)
+                        idx += 1
+                    
+                    # 生成した結果を下の「手動フォーム」側に渡す
+                    st.session_state.temp_slots = slots
+                    st.session_state.temp_tt_zone = az
+                    st.session_state.tt_slots_count = len(slots)
+                    st.success(f"{len(slots)}個のスロットを生成しました。下の「保存」ボタンで確定してください。")
+                    st.rerun()
+                except:
+                    st.error("時刻の形式（10:00など）が正しくありません")
 
 with st.form("tt_v51"):
     ct1, ct2 = st.columns(2)
@@ -272,4 +297,5 @@ if st.button("CSV作成・ダウンロード 💾", type="primary"):
     buf = io.BytesIO()
     pd.concat([pd.DataFrame(CSV_HEADER), mat], ignore_index=True).to_csv(buf, index=False, header=False, encoding="utf-8-sig")
     st.download_button("ダウンロード 📥", buf.getvalue(), f"{shop_name}_setting.csv", "text/csv")
+
 
