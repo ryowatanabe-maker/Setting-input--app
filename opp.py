@@ -272,30 +272,51 @@ if st.session_state.ts_list or st.session_state.period_list:
 
 st.divider()
 
-# --- 7. 出力 ---
+# --- 7. 出力 (日付形式 & 空行エラー対策版) ---
 if st.button("CSV作成・ダウンロード 💾", type="primary"):
     zf, gf, sf, ttf, tsf, pf = pd.DataFrame(st.session_state.z_list), pd.DataFrame(st.session_state.g_list), pd.DataFrame(st.session_state.s_list), st.session_state.tt_list, st.session_state.ts_list, st.session_state.period_list
-    mat = pd.DataFrame(index=range(max(len(zf), len(gf), len(sf), len(ttf), 100)), columns=range(NUM_COLS))
+    
+    # 巨大な表の初期化（行数は必要最低限にする）
+    max_row = max(len(zf), len(gf), len(sf), len(ttf), len(tsf), len(pf), 1)
+    mat = pd.DataFrame(index=range(max_row), columns=range(NUM_COLS))
+    
     for i, r in zf.iterrows(): mat.iloc[i, 0:3] = [r["ゾーン名"], 4097+i, r["フェード秒"]]
     for i, r in gf.iterrows(): mat.iloc[i, 4:8] = [r["グループ名"], 32770+i, GROUP_TYPE_MAP.get(r["グループタイプ"], "1ch"), r["紐づけるゾーン名"]]
+    
     s_db, s_cnt = {}, 8193
     for i, r in sf.iterrows():
-        sn = r["シーン名"]; s_db[sn] = s_db.get(sn, s_cnt); s_cnt = s_cnt+1 if sn not in s_db else s_cnt
-        mat.iloc[i, 9:16] = [sn, s_db[sn], r["調光"], r["ケルビン"], r["Syncaカラー"], r["紐づけるゾーン名"], r["紐づけるグループ名"]]
+        sn = r["シーン名"]
+        if sn not in s_db: s_db[sn] = s_cnt; s_cnt += 1
+        clean_synca = str(r["Syncaカラー"]).replace("'", "") if r["Syncaカラー"] else ""
+        mat.iloc[i, 9:16] = [sn, s_db[sn], r["調光"], r["ケルビン"], clean_synca, r["紐づけるゾーン名"], r["紐づけるグループ名"]]
+
     for i, tt in enumerate(ttf):
         mat.iloc[i, 17:22] = [tt["tt_name"], 12289+i, tt["zone"], tt["sun_start"], tt["sun_end"]]
         c_idx = 22
         for slot in tt["slots"]:
             if c_idx < 196: mat.iloc[i, c_idx], mat.iloc[i, c_idx+1] = slot["time"], slot["scene"]; c_idx += 2
+            
     for i, ts in enumerate(tsf):
         c = ts["config"]
         mat.iloc[i, 197:206] = [ts["zone"], c["daily"], c["mon"], c["tue"], c["wed"], c["thu"], c["fri"], c["sat"], c["sun"]]
+
+    # 特異日の日付変換 (01/01 -> 1月1日)
     for i, p in enumerate(pf):
-        mat.iloc[i, 207:212] = [p["name"], p["start"], p["end"], p["tt"], p["zone"]]
+        # スラッシュを「月」「日」に変換
+        start_date = p["start"].replace("/", "月") + "日" if "/" in p["start"] else p["start"]
+        end_date = p["end"].replace("/", "月") + "日" if "/" in p["end"] else p["end"]
+        # 先頭の0を消す処理 (01月 -> 1月)
+        start_date = start_date.replace("0", "") if start_date.startswith("0") else start_date
+        end_date = end_date.replace("0", "") if end_date.startswith("0") else end_date
+        
+        mat.iloc[i, 207:212] = [p["name"], start_date, end_date, p["tt"], p["zone"]]
 
-    st.dataframe(mat.iloc[:max(len(zf), len(gf), len(sf), len(ttf), 10)].dropna(how='all', axis=1))
+    # 完全に空の行を削除（これ重要！）
+    mat = mat.dropna(how='all')
+    
     buf = io.BytesIO()
-    pd.concat([pd.DataFrame(CSV_HEADER), mat], ignore_index=True).to_csv(buf, index=False, header=False, encoding="utf-8-sig")
-    st.download_button("ダウンロード 📥", buf.getvalue(), f"{shop_name}_setting.csv", "text/csv")
-
-
+    final_output = pd.concat([pd.DataFrame(CSV_HEADER), mat], ignore_index=True)
+    # 改行コードをWindows形式、余計な空行を入れない
+    final_output.to_csv(buf, index=False, header=False, encoding="utf-8-sig", lineterminator='\r\n')
+    
+    st.download_button("エラー対策済みCSVをダウンロード 📥", buf.getvalue(), f"{shop_name}_setting.csv", "text/csv")
