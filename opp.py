@@ -19,7 +19,7 @@ st.header("0. 機器と店舗の設定")
 col_opt1, col_opt2 = st.columns(2)
 with col_opt1:
     gw_type = st.radio("機器選択", ["BBR4HG (72列形式)", "メインゲートウェイ (65列形式)"], horizontal=True)
-shop_name = col_opt2.text_input("店舗名", value="店舗名を入力")
+shop_name = col_opt2.text_input("店舗名", value="店舗A")
 st.divider()
 
 # 定数とID設定
@@ -36,32 +36,43 @@ with st.container(border=True):
     z_n = cz1.text_input("ゾーン名 (例: 店内, 店外)", key="zn_in")
     z_f = cz2.number_input("フェード秒", 0, 60, 0, key="zf_in")
     if cz3.button("ゾーンを追加 ➕", use_container_width=True):
-        if z_n: st.session_state.z_list.append({"ゾーン名": z_n, "フェード秒": z_f}); st.rerun()
+        if z_n:
+            # データを保存
+            st.session_state.z_list.append({"名": z_n, "秒": z_f})
+            st.rerun()
 
+# ゾーンの履歴表示と削除
 if st.session_state.z_list:
+    st.subheader("現在のゾーン")
     for i, z in enumerate(st.session_state.z_list):
-        c_l, c_r = st.columns([4, 1])
-        c_l.write(f"📍 {z['ゾーン名']} (フェード: {z['フェード秒']}秒)")
-        if c_r.button("削除 🗑️", key=f"del_z_{i}"):
-            st.session_state.z_list.pop(i); st.rerun()
+        cl, cr = st.columns([5, 1])
+        cl.write(f"📍 {z['名']} (フェード: {z['秒']}秒)")
+        if cr.button("削除", key=f"del_z_{i}"):
+            st.session_state.z_list.pop(i)
+            st.rerun()
 
 # --- 4. グループ登録 ---
 st.header("2. グループ登録")
-v_zones = [""] + [z["ゾーン名"] for z in st.session_state.z_list]
+v_zones = [""] + [z["名"] for z in st.session_state.z_list]
 with st.container(border=True):
     cg1, cg2, cg3, cg4 = st.columns([2, 1, 2, 1])
     gn = cg1.text_input("グループ名")
     gt = cg2.selectbox("タイプ", list(GROUP_TYPE_MAP.keys()))
     gz = cg3.selectbox("所属ゾーン", options=v_zones)
     if cg4.button("グループ追加 ➕", use_container_width=True):
-        if gn and gz: st.session_state.g_list.append({"名": gn, "型": gt, "ゾ": gz}); st.rerun()
+        if gn and gz:
+            st.session_state.g_list.append({"名": gn, "型": gt, "ゾ": gz})
+            st.rerun()
 
+# グループの履歴表示と削除
 if st.session_state.g_list:
+    st.subheader("現在のグループ")
     for i, g in enumerate(st.session_state.g_list):
-        cl, cr = st.columns([4, 1])
+        cl, cr = st.columns([5, 1])
         cl.write(f"💡 {g['名']} ({g['型']}) - 所属: {g['ゾ']}")
-        if cr.button("削除 🗑️", key=f"del_g_{i}"):
-            st.session_state.g_list.pop(i); st.rerun()
+        if cr.button("削除", key=f"del_g_{i}"):
+            st.session_state.g_list.pop(i)
+            st.rerun()
 
 st.divider()
 
@@ -69,14 +80,14 @@ st.divider()
 st.header("3. シーン設定")
 with st.container(border=True):
     csn, csz = st.columns(2)
-    s_name = csn.text_input("シーン名 (例: 日中)")
-    s_zone = csz.selectbox("設定ゾーン", options=v_zones, key="s_zone_sel")
+    s_name_in = csn.text_input("シーン名 (例: 日中)")
+    s_zone_in = csz.selectbox("設定対象ゾーン", options=v_zones, key="s_zone_sel")
     
-    if s_zone:
-        target_gs = [g for g in st.session_state.g_list if g["ゾ"] == s_zone]
+    if s_zone_in:
+        target_gs = [g for g in st.session_state.g_list if g["ゾ"] == s_zone_in]
         scene_data = []
         for g in target_gs:
-            st.write(f"■ {g['名']}")
+            st.write(f"■ グループ: **{g['名']}**")
             c1, c2, c3 = st.columns([1, 1, 2])
             dim = c1.number_input("調光%", 0, 100, 100, key=f"d_{g['名']}")
             kel = c2.text_input("色温度", "3500", key=f"k_{g['名']}") if g['型'] != "調光" else ""
@@ -87,21 +98,24 @@ with st.container(border=True):
                     r = cs1.selectbox("行", ["-"] + list(range(1, 12)), key=f"r_{g['名']}")
                     c = cs2.selectbox("列", ["-"] + list(range(1, 12)), key=f"c_{g['名']}")
                     if r != "-" and c != "-": syn = f"{r}-{c}"
-            scene_data.append({"sn": s_name, "gn": g['名'], "zn": s_zone, "dim": dim, "kel": kel, "syn": syn})
+            scene_data.append({"sn": s_name_in, "gn": g['名'], "zn": s_zone_in, "dim": dim, "kel": kel, "syn": syn})
         
-        if st.button("このシーンを保存 ✅"):
-            st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == s_name and s["zn"] == s_zone)]
-            st.session_state.s_list.extend(scene_data); st.rerun()
+        if st.button("このシーンを保存 ✅", use_container_width=True):
+            if s_name_in:
+                # 既存の同一(シーン名+ゾーン名)を削除して上書き
+                st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == s_name_in and s["zn"] == s_zone_in)]
+                st.session_state.s_list.extend(scene_data)
+                st.rerun()
 
 if st.session_state.s_list:
-    st.write("▼ 登録済みシーン")
+    st.subheader("現在のシーン登録状況")
     s_df = pd.DataFrame(st.session_state.s_list)
     summ = s_df.groupby(["sn", "zn"]).size().reset_index()
     for i, row in summ.iterrows():
-        cl, cr = st.columns([4, 1])
+        cl, cr = st.columns([5, 1])
         cl.write(f"🎬 {row['sn']} (ゾーン: {row['zn']})")
-        if cr.button("削除 🗑️", key=f"del_s_{i}"):
-            st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == row["sn"] and s["zn"] == row["zn"])]
+        if cr.button("削除", key=f"del_s_{i}"):
+            st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == row['sn'] and s["zn"] == row['zn'])]
             st.rerun()
 
 st.divider()
@@ -113,19 +127,28 @@ tab1, tab2, tab3 = st.tabs(["タイムテーブル案作成", "通常スケジ�
 with tab1:
     v_s_names = [""] + sorted(list(set([s["sn"] for s in st.session_state.s_list])))
     with st.form("tt_form"):
-        tt_name = st.text_input("案の名前", "通常")
+        tt_name = st.text_input("案の名前 (例: 通常, セール時)", "通常")
         tt_zone = st.selectbox("対象ゾーン", v_zones, key="ttz")
         sun_s = st.selectbox("日出シーン", v_s_names)
         sun_e = st.selectbox("日没シーン", v_s_names)
-        # 簡易的に4枠分
         slots = []
         for i in range(4):
             c1, c2 = st.columns(2)
-            t = c1.text_input(f"時刻{i+1}", "09:00" if i==0 else "")
+            t = c1.text_input(f"時刻{i+1}", "09:00" if i==0 else "", placeholder="HH:MM")
             s = c2.selectbox(f"シーン{i+1}", v_s_names, key=f"tts_{i}")
             if t and s: slots.append({"t": t, "s": s})
-        if st.form_submit_button("案を保存"):
-            st.session_state.tt_list.append({"name": tt_name, "zone": tt_zone, "ss": sun_s, "se": sun_e, "slots": slots}); st.rerun()
+        if st.form_submit_button("タイムテーブル案を保存"):
+            if tt_name and tt_zone:
+                st.session_state.tt_list.append({"name": tt_name, "zone": tt_zone, "ss": sun_s, "se": sun_e, "slots": slots})
+                st.rerun()
+
+if st.session_state.tt_list:
+    st.write("▼ 登録済みのタイムテーブル案")
+    for i, t in enumerate(st.session_state.tt_list):
+        cl, cr = st.columns([5, 1])
+        cl.write(f"⏳ {t['name']} (ゾーン: {t['zone']}) - 設定数: {len(t['slots'])}")
+        if cr.button("削除", key=f"del_tt_{i}"):
+            st.session_state.tt_list.pop(i); st.rerun()
 
 with tab2:
     v_tt = [""] + [t["name"] for t in st.session_state.tt_list]
@@ -133,42 +156,67 @@ with tab2:
         target_tt = st.selectbox("適用する案", v_tt)
         if st.form_submit_button("毎日(daily)として適用"):
             if target_tt:
-                zone = next(t["zone"] for t in st.session_state.tt_list if t["name"] == target_tt)
-                st.session_state.ts_list = [x for x in st.session_state.ts_list if x["zone"] != zone]
-                st.session_state.ts_list.append({"zone": zone, "daily": target_tt})
+                zone_of_tt = next(t["zone"] for t in st.session_state.tt_list if t["name"] == target_tt)
+                st.session_state.ts_list = [x for x in st.session_state.ts_list if x["zone"] != zone_of_tt]
+                st.session_state.ts_list.append({"zone": zone_of_tt, "daily": target_tt})
                 st.rerun()
+
+if st.session_state.ts_list:
+    for i, ts in enumerate(st.session_state.ts_list):
+        cl, cr = st.columns([5, 1])
+        cl.write(f"📅 ゾーン: {ts['zone']} ➔ 毎日: {ts['daily']}")
+        if cr.button("解除", key=f"del_ts_{i}"):
+            st.session_state.ts_list.pop(i); st.rerun()
 
 with tab3:
     with st.form("p_form"):
         p_n = st.text_input("特異日名 (例: 正月)")
-        p_t = st.selectbox("使用する案", v_tt, key="pt")
+        p_t = st.selectbox("使用する案", v_tt, key="pt_sel")
         p_s = st.text_input("開始(MM/DD)", "01/01")
         p_e = st.text_input("終了(MM/DD)", "01/03")
         if st.form_submit_button("特異日として保存"):
             if p_t:
-                zone = next(t["zone"] for t in st.session_state.tt_list if t["name"] == p_t)
-                st.session_state.period_list.append({"name": p_n, "zone": zone, "tt": p_t, "start": p_s, "end": p_e})
+                zone_of_p = next(t["zone"] for t in st.session_state.tt_list if t["name"] == p_t)
+                st.session_state.period_list.append({"name": p_n, "zone": zone_of_p, "tt": p_t, "start": p_s, "end": p_e})
                 st.rerun()
 
-if st.session_state.ts_list or st.session_state.period_list:
-    if st.button("スケジュール設定のみリセット 🔄"):
-        st.session_state.ts_list = []; st.session_state.period_list = []; st.rerun()
+if st.session_state.period_list:
+    for i, p in enumerate(st.session_state.period_list):
+        cl, cr = st.columns([5, 1])
+        cl.write(f"🎌 {p['name']} ({p['start']}〜{p['end']}) ➔ 案: {p['tt']}")
+        if cr.button("削除", key=f"del_p_{i}"):
+            st.session_state.period_list.pop(i); st.rerun()
 
 st.divider()
 
-# --- 7. CSV作成 ---
+# --- 7. CSV作成ロジック ---
 if st.button("CSV作成・ダウンロード 💾", type="primary"):
-    # ヘッダー準備
-    ROW1 = [None] * NUM_COLS
-    ROW1[0], ROW1[4], ROW1[9], ROW1[17] = 'Zone情報', 'Group情報', 'Scene情報', 'Timetable情報'
-    if NUM_COLS == 72: ROW1[33], ROW1[43] = 'Timetable-schedule情報', 'Timetable期間/特異日情報'
-    else: ROW1[24], ROW1[34] = 'Timetable-schedule情報', 'Timetable期間/特異日情報'
+    # ヘッダー構築
+    ROW1_CSV = [None] * NUM_COLS
+    ROW1_CSV[0], ROW1_CSV[4], ROW1_CSV[9], ROW1_CSV[17] = 'Zone情報', 'Group情報', 'Scene情報', 'Timetable情報'
+    if NUM_COLS == 72:
+        ROW1_CSV[33], ROW1_CSV[43] = 'Timetable-schedule情報', 'Timetable期間/特異日情報'
+    else:
+        ROW1_CSV[24], ROW1_CSV[34] = 'Timetable-schedule情報', 'Timetable期間/特異日情報'
     
+    ROW3_CSV = [None] * NUM_COLS
+    ROW3_CSV[0:3] = ['[zone]', '[id]', '[fade]']
+    ROW3_CSV[4:8] = ['[group]', '[id]', '[type]', '[zone]']
+    ROW3_CSV[9:16] = ['[scene]', '[id]', '[dimming]', '[color]', '[perform]', '[zone]', '[group]']
+    ROW3_CSV[17:22] = ['[zone-timetable]', '[id]', '[zone]', '[sun-start-scene]', '[sun-end-scene]']
+    if NUM_COLS == 72:
+        for i in range(22, 32, 2): ROW3_CSV[i], ROW3_CSV[i+1] = '[time]', '[scene]'
+        ROW3_CSV[33:42] = ['[zone-ts]', '[daily]', '[monday]', '[tuesday]', '[wednesday]', '[thursday]', '[friday]', '[saturday]', '[sunday]']
+        ROW3_CSV[43:48] = ['[zone-period]', '[start]', '[end]', '[timetable]', '[zone]']
+    else:
+        ROW3_CSV[24:33] = ['[zone-ts]', '[daily]', '[monday]', '[tuesday]', '[wednesday]', '[thursday]', '[friday]', '[saturday]', '[sunday]']
+        ROW3_CSV[34:40] = ['[zone-period]', '[id]', '[start]', '[end]', '[timetable]', '[zone]']
+
     mat = pd.DataFrame(index=range(100), columns=range(NUM_COLS))
     # ゾーン
-    for i, r in enumerate(st.session_state.z_list): mat.iloc[i, 0:3] = [r["ゾーン名"], Z_ID_BASE+i, r["フェード秒"]]
+    for i, r in enumerate(st.session_state.z_list): mat.iloc[i, 0:3] = [r["名"], Z_ID_BASE+i, r["秒"]]
     # グループ
-    for i, r in enumerate(st.session_state.g_list): mat.iloc[i, 4:8] = [r["名"], G_ID_BASE+i, GROUP_TYPE_MAP.get(r["型"]), r["ゾ"]]
+    for i, r in enumerate(st.session_state.g_list): mat.iloc[i, 4:8] = [r["名"], G_ID_BASE+i, GROUP_TYPE_MAP.get(r["型"], "1ch"), r["ゾ"]]
     # シーン
     s_db, s_cnt = {}, S_ID_BASE
     for i, r in enumerate(st.session_state.s_list):
@@ -191,5 +239,5 @@ if st.button("CSV作成・ダウンロード 💾", type="primary"):
         mat.iloc[i, pe_c:pe_c+5] = [p["name"], sd, ed, p["tt"], p["zone"]]
 
     buf = io.BytesIO()
-    pd.concat([pd.DataFrame(CSV_HEADER), mat.dropna(how='all')], ignore_index=True).to_csv(buf, index=False, header=False, encoding="utf-8-sig", lineterminator='\r\n')
-    st.download_button("CSVを保存 📥", buf.getvalue(), f"{shop_name}_FitPlus.csv", "text/csv")
+    pd.concat([pd.DataFrame([ROW1_CSV, [None]*NUM_COLS, ROW3_CSV]), mat.dropna(how='all')], ignore_index=True).to_csv(buf, index=False, header=False, encoding="utf-8-sig", lineterminator='\r\n')
+    st.download_button("完成版CSVをダウンロード 📥", buf.getvalue(), f"{shop_name}_data.csv", "text/csv")
