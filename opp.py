@@ -238,6 +238,43 @@ if st.button("CSV作成・ダウンロード 💾", type="primary"):
         sd = p["start"].replace("/", "月") + "日"; ed = p["end"].replace("/", "月") + "日"
         mat.iloc[i, pe_c:pe_c+5] = [p["name"], sd, ed, p["tt"], p["zone"]]
 
+ # --- 7. CSV出力 (特異日エラー対策版) ---
+if st.button("CSV作成・ダウンロード 💾", type="primary"):
+    # データの準備
+    zf, gf, sf = pd.DataFrame(st.session_state.z_list), pd.DataFrame(st.session_state.g_list), pd.DataFrame(st.session_state.s_list)
+    ttf, tsf, pf = st.session_state.tt_list, st.session_state.ts_list, st.session_state.period_list
+
+    # 白紙の巨大な表を作成
+    mat = pd.DataFrame(index=range(max(len(zf), len(gf), len(sf), 50)), columns=range(NUM_COLS))
+    
+    # --- (中略：ゾーン、グループ、シーンの流し込み) ---
+    # ※ここは前回のコードと同じでOKです
+
+    # --- 特異日セクション (ここがエラーの直接的な原因) ---
+    pe_col = 43 if NUM_COLS == 72 else 34
+    for i, p in enumerate(pf):
+        # 【修正】01/01 や 1/1 を「1月1日」という形式に強制変換する
+        start_raw = p["start"].replace("/", "月") + "日" if "/" in p["start"] else p["start"]
+        end_raw = p["end"].replace("/", "月") + "日" if "/" in p["end"] else p["end"]
+        
+        # 先頭の「0」を取る（例：01月01日 → 1月1日）
+        def clean_date(d):
+            return d.replace("0", "") if d.startswith("0") else d
+            
+        mat.iloc[i, pe_col:pe_col+5] = [
+            p["name"], 
+            clean_date(start_raw), 
+            clean_date(end_raw), 
+            p["tt"], 
+            p["zone"]
+        ]
+
+    # 【重要】データが入っていない行（カンマだけの行）を完全に消す
+    mat = mat.dropna(how='all')
+
     buf = io.BytesIO()
-    pd.concat([pd.DataFrame([ROW1_CSV, [None]*NUM_COLS, ROW3_CSV]), mat.dropna(how='all')], ignore_index=True).to_csv(buf, index=False, header=False, encoding="utf-8-sig", lineterminator='\r\n')
-    st.download_button("完成版CSVをダウンロード 📥", buf.getvalue(), f"{shop_name}_data.csv", "text/csv")
+    final_output = pd.concat([pd.DataFrame(CSV_HEADER), mat], ignore_index=True)
+    
+    # 改行コードをWindows形式（\r\n）にして保存
+    final_output.to_csv(buf, index=False, header=False, encoding="utf-8-sig", lineterminator='\r\n')
+    st.download_button("修正済みCSVをダウンロード 📥", buf.getvalue(), f"{shop_name}_FitPlus.csv", "text/csv")
