@@ -16,7 +16,7 @@ if 'auto_scene_count' not in st.session_state: st.session_state.auto_scene_count
 if 'scene_edit_buf' not in st.session_state: st.session_state.scene_edit_buf = {}
 
 # --- 2. 【最優先】機器選択と店舗名 ---
-st.header("0. 機器と店舗の設定 ")
+st.header("0. 機器と店舗の設定 🏗️")
 col_opt1, col_opt2 = st.columns(2)
 
 with col_opt1:
@@ -74,7 +74,7 @@ else:
 CSV_HEADER = [ROW1, [None] * NUM_COLS, ROW3]
 
 # --- 4. 登録セクション (UI) ---
-st.header("1. ゾーン・グループ登録 ")
+st.header("1. ゾーン・グループ登録 🌐")
 c1, c2 = st.columns(2)
 
 with c1:
@@ -96,7 +96,7 @@ with c2:
 st.divider()
 
 # 5. シーン登録
-st.header("2. シーン登録・編集 ")
+st.header("2. シーン登録・編集 🎬")
 with st.container(border=True):
     col_sn1, col_sn2 = st.columns(2)
     new_scene_name = col_sn1.text_input("シーン名 (例: 日中)")
@@ -126,7 +126,7 @@ with st.container(border=True):
 st.divider()
 
 # --- 6. 出力ロジック (選択機器に合わせて完璧に配置) ---
-st.header("3. CSV作成 ")
+st.header("3. CSV作成 💾")
 if st.button("設定CSVを生成してダウンロード", type="primary"):
     zf, gf, sf = pd.DataFrame(st.session_state.z_list), pd.DataFrame(st.session_state.g_list), pd.DataFrame(st.session_state.s_list)
     mat = pd.DataFrame(index=range(max(len(zf), len(gf), len(sf), 50)), columns=range(NUM_COLS))
