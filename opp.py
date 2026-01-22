@@ -3,23 +3,21 @@ import pandas as pd
 import io
 import json
 
-# --- 0. 互換性維持用の関数 ---
+# --- 0. 再描画関数を最新版に修正 ---
 def safe_rerun():
-    try:
-        st.rerun()
-    except:
-        st.experimental_rerun()
+    # 最新のStreamlitではこれだけで動作します
+    st.rerun()
 
 # --- 1. 定数定義 (大利根店・自己圧縮成功ファイルに完全準拠) ---
 NUM_COLS = 72
 Z_ID, G_ID, S_ID, T_ID = 4097, 32769, 8193, 12289
 GROUP_TYPE_MAP = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "3ch"}
 
-st.set_page_config(page_title="FitPlus 設定作成 v61-Fix", layout="wide")
-st.title("FitPlus 設定データ作成 (v61ベース・BBR4HG対応) ⚙️")
+st.set_page_config(page_title="FitPlus 設定作成 v61-Final", layout="wide")
+st.title("FitPlus 設定データ作成 (BBR4HG/自己圧縮対応) ⚙️")
 
 # セッション状態の初期化
-for key in ['z_list', 'g_list', 's_list', 'tt_list', 'ts_list', 'period_list']:
+for key in ['z_list', 'g_list', 's_list']:
     if key not in st.session_state:
         st.session_state[key] = []
 
@@ -91,13 +89,11 @@ with st.container(border=True):
         
         if st.button("このシーンを保存 ✅", use_container_width=True, key="btn_save_scene"):
             if s_name:
-                # 既存の同一(シーン名+ゾーン名)を削除して上書き
                 st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == s_name and s["zn"] == s_zone)]
                 st.session_state.s_list.extend(scene_data)
                 safe_rerun()
 
 if st.session_state.s_list:
-    st.subheader("現在の登録シーン一覧")
     s_df = pd.DataFrame(st.session_state.s_list)
     summ = s_df.groupby(["sn", "zn"]).size().reset_index()
     for i, row in summ.iterrows():
@@ -115,30 +111,26 @@ st.header("4. インポート用データの書き出し 💾")
 if st.button("CSV & JSON を生成", type="primary", use_container_width=True, key="btn_download_final"):
     # ヘッダー構築
     ROW1_CSV = [None] * NUM_COLS
-    ROW1_CSV[0], ROW1_CSV[4], ROW1_CSV[9], ROW1_CSV[17], ROW1_CSV[33], ROW1_CSV[43] = 'Zone情報', 'Group情報', 'Scene情報', 'Timetable情報', 'Timetable-schedule情報', 'Timetable期間/特異日情報'
+    ROW1_CSV[0], ROW1_CSV[4], ROW1_CSV[9], ROW1_CSV[17] = 'Zone情報', 'Group情報', 'Scene情報', 'Timetable情報'
     
     ROW3_CSV = [None] * NUM_COLS
     ROW3_CSV[0:3] = ['[zone]', '[id]', '[fade]']
     ROW3_CSV[4:8] = ['[group]', '[id]', '[type]', '[zone]']
     ROW3_CSV[9:16] = ['[scene]', '[id]', '[dimming]', '[color]', '[perform]', '[zone]', '[group]']
-    ROW3_CSV[17:22] = ['[zone-timetable]', '[id]', '[zone]', '[sun-start-scene]', '[sun-end-scene]']
-    for i in range(22, 32, 2): ROW3_CSV[i], ROW3_CSV[i+1] = '[time]', '[scene]'
-    ROW3_CSV[33:42] = ['[zone-ts]', '[daily]', '[monday]', '[tuesday]', '[wednesday]', '[thursday]', '[friday]', '[saturday]', '[sunday]']
-    ROW3_CSV[43:48] = ['[zone-period]', '[start]', '[end]', '[timetable]', '[zone]']
 
     mat = pd.DataFrame(index=range(200), columns=range(NUM_COLS))
     # ゾーン
     for i, r in enumerate(st.session_state.z_list): mat.iloc[i, 0:3] = [r["名"], Z_ID+i, r["秒"]]
-    # グループ (7列目の[zone]を補完)
+    # グループ
     for i, r in enumerate(st.session_state.g_list): mat.iloc[i, 4:8] = [r["名"], G_ID+i, GROUP_TYPE_MAP.get(r["型"]), r["ゾ"]]
-    # シーン (14列目の[zone]を補完)
+    # シーン
     s_db, s_cnt = {}, S_ID
     for i, r in enumerate(st.session_state.s_list):
         key = (r["sn"], r["zn"])
         if key not in s_db: s_db[key] = s_cnt; s_cnt += 1
         mat.iloc[i, 9:16] = [r["sn"], s_db[key], r["dim"], r["kel"], r["syn"], r["zn"], r["gn"]]
 
-    # CSV出力 (文字化け対策: BOMなしUTF-8)
+    # CSV出力 (BOMなしUTF-8)
     buf_csv = io.BytesIO()
     final_output = pd.concat([pd.DataFrame([ROW1_CSV, [None]*NUM_COLS, ROW3_CSV]), mat.dropna(how='all')], ignore_index=True)
     final_output.to_csv(buf_csv, index=False, header=False, encoding="utf-8", lineterminator='\r\n')
@@ -150,5 +142,3 @@ if st.button("CSV & JSON を生成", type="primary", use_container_width=True, k
     st.success("BOMなし・4097形式で生成しました。")
     st.download_button("1. setting_data.csv を保存", buf_csv.getvalue(), "setting_data.csv", key="download_csv_final")
     st.download_button("2. temp.json を保存", buf_json.getvalue(), "temp.json", key="download_json_final")
-
-st.info("💡 使い方: 保存した2つのファイルを直接選び、tar形式で圧縮してゲートウェイへ。")
