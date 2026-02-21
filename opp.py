@@ -4,27 +4,26 @@ import io
 import json
 import tarfile
 
-# --- 1. 定数 (赤池店形式・236列を完全再現) ---
+# --- 1. 定数 (赤池店 236列形式を完全に再現) ---
 NUM_COLS = 236
-Z_ID_BASE, G_ID_BASE, S_ID_BASE = 4097, 32769, 8193
+Z_ID, G_ID, S_ID = 4097, 32769, 8193
 TYPE_MAP = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "3ch"}
 
-st.set_page_config(page_title="FitPlus 最終解決版 v72", layout="wide")
-st.title("FitPlus インポート反映成功版 (236列・赤池店形式) ⚙️")
+st.set_page_config(page_title="FitPlus 赤池店形式・完全版", layout="wide")
+st.title("FitPlus 設定作成 (236列・赤池店形式準拠) ⚙️")
 
-# セッション状態
-if 'z_list' not in st.session_state: st.session_state.z_list = []
-if 'g_list' not in st.session_state: st.session_state.g_list = []
-if 's_list' not in st.session_state: st.session_state.s_list = []
+# セッション状態の初期化
+for k in ['z_list', 'g_list', 's_list']:
+    if k not in st.session_state: st.session_state[k] = []
 
-# --- 2. 登録セクション (UI) ---
+# --- 2. 登録UI ---
 c1, c2 = st.columns(2)
 with c1:
     with st.form("z_f", clear_on_submit=True):
         st.subheader("1. ゾーン登録")
         zn = st.text_input("ゾーン名 (例: 店内)")
         zf = st.number_input("フェード秒", 0, 60, 0)
-        if st.form_submit_button("追加"):
+        if st.form_submit_button("ゾーン追加"):
             if zn: st.session_state.z_list.append({"名": zn, "秒": zf}); st.rerun()
     for i, z in enumerate(st.session_state.z_list):
         cl, cr = st.columns([4, 1])
@@ -62,39 +61,42 @@ with st.container(border=True):
         if st.button("このシーン設定を保存", use_container_width=True):
             if s_name: st.session_state.s_list.extend(scene_tmp); st.rerun()
 
-# --- 3. 赤池店を完全再現する 236列出力ロジック ---
+# --- 3. 赤池店形式(236列) 出力ロジック ---
 st.divider()
-if st.button("📥 インポート専用 .tar を出力 (赤池店形式)", type="primary", use_container_width=True):
+if st.button("📥 インポート用 .tar を生成 (赤池店形式)", type="primary", use_container_width=True):
     # 236列のベース作成
     df = pd.DataFrame("", index=range(200), columns=range(NUM_COLS))
     
-    # データの配置
-    for i, z in enumerate(st.session_state.z_list): df.iloc[i, 0:3] = [z["名"], Z_ID_BASE + i, z["秒"]]
-    for i, g in enumerate(st.session_state.g_list): df.iloc[i, 4:8] = [g["名"], G_ID_BASE + i, TYPE_MAP.get(g["型"]), g["ゾ"]]
-    s_m, s_idx = {}, S_ID_BASE
+    # データ配置 (ここがズレると空白になります)
+    for i, z in enumerate(st.session_state.z_list):
+        df.iloc[i, 0:3] = [z["名"], Z_ID + i, z["秒"]]
+    for i, g in enumerate(st.session_state.g_list):
+        df.iloc[i, 4:8] = [g["名"], G_ID + i, TYPE_MAP.get(g["型"]), g["ゾ"]]
+    s_m, s_idx = {}, S_ID
     for i, r in enumerate(st.session_state.s_list):
         k = (r["sn"], r["zn"])
         if k not in s_m: s_m[k] = s_idx; s_idx += 1
         df.iloc[i, 9:16] = [r["sn"], s_m[k], r["dim"], r["kel"], "", r["zn"], r["gn"]]
 
-    # ヘッダー (赤池店 236列から完全抽出)
+    # ヘッダー (赤池店の実機ファイルから抽出した236列見出し)
     h0 = [""] * NUM_COLS
-    h0[0], h0[4], h0[9], h0[17], h0[194], h0[205], h0[212], h0[218], h0[221], h0[232] = 'Zone情報','Group情報','Scene情報','Timetable情報','Timetable-schedule情報','Timetable期間/特異日情報','センサーパターン情報','センサータイムテーブル情報','センサータイムテーブル/スケジュール情報','センサータイムテーブル期間/特異日情報'
+    h0[0], h0[4], h0[9], h0[17], h0[197], h0[207], h0[213], h0[218], h0[221], h0[231] = 'Zone情報','Group情報','Scene情報','Timetable情報','Timetable-schedule情報','Timetable期間/特異日情報','センサーパターン情報','センサータイムテーブル情報','センサータイムテーブル/スケジュール情報','センサータイムテーブル期間/特異日情報'
     h2 = [""] * NUM_COLS
     h2[0:3], h2[4:8] = ['[zone]','[id]','[fade]'], ['[group]','[id]','[type]','[zone]']
     h2[9:16] = ['[scene]','[id]','[dimming]','[color]','[perform]','[zone]','[group]']
     h2[17:22] = ['[zone-timetable]','[id]','[zone]','[sun-start-scene]','[sun-end-scene]']
-    for j in range(22, 194, 2): h2[j], h2[j+1] = '[time]','[scene]'
-    h2[195:204] = ['[zone-ts]','[daily]','[monday]','[tuesday]','[wednesday]','[thursday]','[friday]','[saturday]','[sunday]']
-    h2[206:211] = ['[zone-period]','[start]','[end]','[timetable]','[zone]']
+    for j in range(22, 196, 2): h2[j], h2[j+1] = '[time]','[scene]'
+    h2[197:206] = ['[zone-ts]','[daily]','[monday]','[tuesday]','[wednesday]','[thursday]','[friday]','[saturday]','[sunday]']
+    h2[207:212] = ['[zone-period]','[start]','[end]','[timetable]','[zone]']
     h2[213:217] = ['[pattern]','[id]','[type]','[mode]']
-    h2[219:221] = ['[sensor-timetable]','[id]']
-    h2[222:231] = ['[sensor-ts]','[daily]','[monday]','[tuesday]','[wednesday]','[thursday]','[friday]','[saturday]','[sunday]']
-    h2[233:237] = ['[sensor-period]','[start]','[end]','[timetable]','[group]']
+    h2[218:220] = ['[sensor-timetable]','[id]']
+    h2[221:230] = ['[sensor-ts]','[daily]','[monday]','[tuesday]','[wednesday]','[thursday]','[friday]','[saturday]','[sunday]']
+    h2[231:236] = ['[sensor-period]','[start]','[end]','[timetable]','[group]']
 
+    # 結合
     final_csv = pd.concat([pd.DataFrame([h0, [""]*NUM_COLS, h2]), df], ignore_index=True)
 
-    # バイナリ化 (BOMありUTF-8)
+    # バイナリ化 (BOMありUTF-8 / CRLF)
     csv_buf = io.BytesIO()
     final_csv.to_csv(csv_buf, index=False, header=False, encoding="utf-8-sig", lineterminator='\r\n')
     csv_bytes = csv_buf.getvalue()
@@ -109,5 +111,5 @@ if st.button("📥 インポート専用 .tar を出力 (赤池店形式)", type
         j_info = tarfile.TarInfo(name="temp.json"); j_info.size = len(json_bytes)
         tar.addfile(j_info, io.BytesIO(json_bytes))
 
-    st.success("成功！236列の赤池店形式で作成しました。解凍せずにアップロードしてください。")
-    st.download_button("📥 ゲートウェイ用tarを保存", tar_buf.getvalue(), "FitPlus_Setup_Full.tar")
+    st.success("236列の赤池店形式で作成完了！そのままアップロードしてください。")
+    st.download_button("📥 ゲートウェイ用tarを保存", tar_buf.getvalue(), "FitPlus_Setup_Akaike.tar")
