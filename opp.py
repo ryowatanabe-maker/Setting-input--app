@@ -11,7 +11,7 @@ NUM_COLS = 73
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-st.set_page_config(page_title="FitPlus Pro v3200", layout="wide")
+st.set_page_config(page_title="FitPlus Pro v3300", layout="wide")
 
 # セッション状態の保持
 if 'z_list' not in st.session_state: st.session_state.z_list = []
@@ -44,8 +44,8 @@ if st.sidebar.button("データを全リセット"):
 
 st.divider()
 
-# --- 1. ゾーン & グループ登録 ---
-st.header("1. ゾーン & グループ登録")
+# --- 1. 登録セクション ---
+st.header("1. 構成登録")
 c_reg, c_view = st.columns([1, 1])
 vz = [z["名"] for z in st.session_state.z_list]
 
@@ -74,12 +74,12 @@ with c_view:
 st.divider()
 
 # --- 2. シーン作成 & 履歴 ---
-st.header("2. シーン作成 & 履歴確認")
+st.header("2. シーン作成 & 履歴")
 if os.path.exists("synca_palette.png"): st.image("synca_palette.png", width=400)
 c_s_reg, c_s_view = st.columns([1, 1])
 
 with c_s_reg:
-    s_name_in = st.text_input("シーン名")
+    s_name_in = st.text_input("作成シーン名")
     s_zone_in = st.selectbox("対象ゾーン", options=[""] + vz)
     if s_zone_in:
         target_gs = [g for g in st.session_state.g_list if g["ゾ"] == s_zone_in]
@@ -92,9 +92,9 @@ with c_s_reg:
                     mode = st.radio("設定方法", ["パレット(x-y)", "調色"], key=f"m_{g['名']}", horizontal=True)
                     if mode == "パレット(x-y)":
                         cx, cy = st.columns(2)
-                        ex, ey = cx.slider("X", 1, 11, 6, key=f"x_{g['名']}"), cy.slider("Y", 1, 11, 6, key=f"y_{g['名']}")
-                    else: kel = st.text_input("K", "4000", key=f"ks_{g['名']}")
-                elif g['型'] == "調光調色": kel = st.text_input("K", "4000", key=f"k_{g['名']}")
+                        ex, ey = cx.slider("演出X", 1, 11, 6, key=f"x_{g['名']}"), cy.slider("演出Y", 1, 11, 6, key=f"y_{g['名']}")
+                    else: kel = st.text_input("色温度(K)", "4000", key=f"ks_{g['名']}")
+                elif g['型'] == "調光調色": kel = st.text_input("色温度(K)", "4000", key=f"k_{g['名']}")
                 scene_tmp.append({"sn": s_name_in, "gn": g['名'], "zn": s_zone_in, "dim": dim, "kel": kel, "ex": ex, "ey": ey})
         if st.button("このシーンを保存"):
             if s_name_in:
@@ -121,18 +121,18 @@ if all_scene_opts:
     with st.container(border=True):
         st.subheader("🔄 多段ループ生成")
         c_add, c_clear = st.columns([2, 1])
-        new_scene = c_add.selectbox("シーン順序に追加", options=all_scene_opts)
+        new_scene = c_add.selectbox("ループ順序に追加", options=all_scene_opts)
         if c_add.button("＋ 追加"):
             st.session_state.loop_scenes.append(new_scene); st.rerun()
-        if c_clear.button("ループクリア"):
+        if c_clear.button("クリア"):
             st.session_state.loop_scenes = []; st.rerun()
         
         if st.session_state.loop_scenes:
-            st.info("ループ順: " + " ➔ ".join(st.session_state.loop_scenes))
+            st.info("順序: " + " ➔ ".join(st.session_state.loop_scenes))
             c1, c2, c3, c4 = st.columns(4)
-            g_st, g_en = c1.time_input("開始", value=time(10, 0)), c2.time_input("終了", value=time(21, 0))
+            g_st, g_en = c1.time_input("開始"), c2.time_input("終了")
             g_it, g_rp = c3.number_input("分", 1, 120, 8), c4.selectbox("曜日", DAY_OPTIONS)
-            if st.button("⏰ スケジュールを一括生成", use_container_width=True):
+            if st.button("⏰ 一括生成", use_container_width=True):
                 new_r = []
                 dt, idx = datetime.combine(datetime.today(), g_st), 0
                 while dt <= datetime.combine(datetime.today(), g_en) and len(new_r) < 100:
@@ -165,18 +165,22 @@ if all_scene_opts:
         cols = st.columns([4, 1]); cols[0].warning(f"{p['名']} ({p['sd']}〜{p['ed']})"); 
         if cols[1].button("削除", key=f"dp_{i}"): st.session_state.p_list.pop(i); st.rerun()
 
-# --- 4. 出力 (全ID/Perform/ID空欄・BOMあり・1000行パディング) ---
+# --- 4. 出力 (全ID空欄・パレットN列・BOMあり・1000行パディング) ---
 st.divider()
 if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_container_width=True):
     rows = [[""] * NUM_COLS for _ in range(1000)]
-    # Zone/Group
     for i, z in enumerate(st.session_state.z_list): rows[i][0], rows[i][1], rows[i][2] = z["名"], "", z["秒"]
     for i, g in enumerate(st.session_state.g_list): rows[i][4], rows[i][5], rows[i][6], rows[i][7] = g["名"], "", GROUP_TYPES[g["型"]], g["ゾ"]
-    # Scene
+    
+    # シーン
     for i, r in enumerate(st.session_state.s_list):
-        # 5-6問題：Excel対策としてシングルクォート接頭辞を付与 '5-6
-        color_val = f"'{r['ex']}-{r['ey']}" if r['ex'] != "" else r['kel']
-        rows[i][9], rows[i][10], rows[i][11], rows[i][12], rows[i][13], rows[i][15], rows[i][16] = r["sn"], "", r["dim"], color_val, "", r["zn"], r["gn"]
+        if r['ex'] != "":
+            # パレット演出時: M列[color]は空白、N列[perform]に " x-y" を入力
+            palette_val = f" {r['ex']}-{r['ey']}"
+            rows[i][9], rows[i][10], rows[i][11], rows[i][12], rows[i][13], rows[i][15], rows[i][16] = r["sn"], "", r["dim"], "", palette_val, r["zn"], r["gn"]
+        else:
+            # 調色時: M列[color]に色温度、N列[perform]は空白
+            rows[i][9], rows[i][10], rows[i][11], rows[i][12], rows[i][13], rows[i][15], rows[i][16] = r["sn"], "", r["dim"], r["kel"], "", r["zn"], r["gn"]
     
     # Timetable
     idx_tt = 0
@@ -193,10 +197,9 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
                 rep_c = 36 if rep == "毎日" else 37 + DAY_OPTIONS.index(rep) - 1
                 rows[idx_tt][rep_c] = sn_main; idx_tt += 1
 
-    # 特異日 (ここを復活)
+    # 特異日
     for i, p in enumerate(st.session_state.p_list):
-        # Index 45: [zone-period], 46: [start], 47: [end], 48: [timetable], 49: [zone]
-        tt_ref = f"{p['zn']}_{p['rep']}_TT" # 内部的な名前のルールに合わせる
+        tt_ref = f"{p['zn']}_{p['rep']}_TT"
         rows[i][45], rows[i][46], rows[i][47], rows[i][48], rows[i][49] = p["名"], fmt_d(p["sd"]), fmt_d(p["ed"]), tt_ref, p["zn"]
 
     h0, h2 = [""] * NUM_COLS, [""] * NUM_COLS
