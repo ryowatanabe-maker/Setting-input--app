@@ -11,7 +11,7 @@ NUM_COLS = 73
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-st.set_page_config(page_title="FitPlus Pro v1800", layout="wide")
+st.set_page_config(page_title="FitPlus Pro v2100", layout="wide")
 
 # セッション状態の保持
 if 'z_list' not in st.session_state: st.session_state.z_list = []
@@ -34,7 +34,7 @@ def safe_to_time(val):
 def fmt_t(t): return f"{t.hour}:{t.minute:02}"
 def fmt_d(d): return f"{d.month}月{d.day}日"
 
-st.title("FitPlus ⚙️ 統合設定ツール (成功モデル完全準拠)")
+st.title("FitPlus ⚙️ 統合設定ツール")
 
 # --- 1. 構成登録 ---
 st.header("1. ゾーン & グループ登録")
@@ -74,8 +74,8 @@ c_s_main, c_s_list = st.columns([1, 1])
 with c_s_main:
     if os.path.exists("synca_palette.png"):
         st.image("synca_palette.png", caption="Syncaパレット (X:1-11, Y:1-11)", width=400)
-    s_name_in = st.text_input("シーン名")
-    s_zone_in = st.selectbox("対象ゾーン", options=[""] + vz)
+    s_name_in = st.text_input("作成シーン名")
+    s_zone_in = st.selectbox("対象ゾーン選択", options=[""] + vz)
 
     if s_zone_in:
         target_gs = [g for g in st.session_state.g_list if g["ゾ"] == s_zone_in]
@@ -95,8 +95,9 @@ with c_s_main:
                     kel = st.text_input("色温度(K)", "4000", key=f"k_{g['名']}")
                 scene_tmp.append({"sn": s_name_in, "gn": g['名'], "zn": s_zone_in, "dim": dim, "kel": kel, "ex": ex, "ey": ey})
         if st.button("このシーン設定を保存", use_container_width=True):
-            st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == s_name_in and s["zn"] == s_zone_target)]
-            st.session_state.s_list.extend(scene_tmp); st.rerun()
+            if s_name_in:
+                st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == s_name_in and s["zn"] == s_zone_in)]
+                st.session_state.s_list.extend(scene_tmp); st.rerun()
 
 with c_s_list:
     st.subheader("📜 シーン履歴")
@@ -115,11 +116,11 @@ st.header("3. スケジュール設定")
 all_scene_names = sorted(list(set([f"{s['sn']} [{s['zn']}]" for s in st.session_state.s_list])))
 
 if all_scene_names:
-    with st.expander("⏰ 自動生成 (交互シーン対応)"):
+    with st.expander("⏰ スケジュール自動生成"):
         c1, c2, c3 = st.columns(3)
         gen_start, gen_end, gen_int = c1.time_input("開始", value=time(9, 0)), c2.time_input("終了", value=time(21, 0)), c3.number_input("間隔(分)", 1, 120, 8)
         sa, sb, sr = st.selectbox("メインA", all_scene_names), st.selectbox("交互B", ["なし"]+all_scene_names), st.selectbox("曜日", DAY_OPTIONS)
-        if st.button("一括生成"):
+        if st.button("生成"):
             new_rows = []
             dt, count = datetime.combine(datetime.today(), gen_start), 0
             while dt <= datetime.combine(datetime.today(), gen_end) and len(new_rows) < 10:
@@ -141,7 +142,7 @@ if all_scene_names:
 
 st.divider()
 
-# --- 4. 出力 (73列・全ID & Perform空欄・BOMあり) ---
+# --- 4. 出力 (73列・全ID & Perform空欄) ---
 if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_container_width=True):
     rows = [[""] * NUM_COLS for _ in range(500)]
     
@@ -149,10 +150,9 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
     for i, z in enumerate(st.session_state.z_list): rows[i][0], rows[i][1], rows[i][2] = z["名"], "", z["秒"]
     for i, g in enumerate(st.session_state.g_list): rows[i][4], rows[i][5], rows[i][6], rows[i][7] = g["名"], "", GROUP_TYPES[g["型"]], g["ゾ"]
     
-    # Scene (ID空欄, Perform空欄)
+    # Scene (ID・Perform(13)空欄, パレットは6/6形式)
     for i, r in enumerate(st.session_state.s_list):
         c_val = f"{r['ex']}/{r['ey']}" if r['ex'] != "" else r['kel']
-        # index 13: [perform] -> 空欄
         rows[i][9], rows[i][10], rows[i][11], rows[i][12], rows[i][13], rows[i][15], rows[i][16] = r["sn"], "", r["dim"], c_val, "", r["zn"], r["gn"]
     
     # Timetable (ID空欄, 名前はシーン名)
@@ -163,17 +163,12 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
             if not slots.empty:
                 slots = slots.sort_values("時刻")
                 s_name_core = slots.iloc[0]["シーン選択"].split(" [")[0]
-                # index 18: [zone-timetable] -> シーン名
                 rows[idx_tt][18], rows[idx_tt][19], rows[idx_tt][20] = s_name_core, "", z_name
                 for j, (_, s) in enumerate(slots.head(6).iterrows()):
                     rows[idx_tt][23 + j*2], rows[idx_tt][24 + j*2] = fmt_t(s["時刻"]), s["シーン選択"].split(" [")[0]
                 rows[idx_tt][35] = z_name
                 rep_idx = 36 if rep_m == "毎日" else 37 + DAY_OPTIONS.index(rep_m) - 1
                 rows[idx_tt][rep_idx] = s_name_core; idx_tt += 1
-
-    # 特異日
-    for i, p in enumerate(st.session_state.p_list):
-        rows[i][45], rows[i][46], rows[i][47], rows[i][48], rows[i][49] = p["名"], fmt_d(p["sd"]), fmt_d(p["ed"]), p["zn"] + "_Daily_TT", p["zn"]
 
     # ヘッダー構築 (73列)
     h0, h2 = [""] * NUM_COLS, [""] * NUM_COLS
@@ -193,4 +188,4 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
         j_data = json.dumps({"pair": [], "csv": "setting_data.csv"}).encode('utf-8')
         j_info = tarfile.TarInfo(name="temp.json"); j_info.size = len(j_data); tar.addfile(j_info, io.BytesIO(j_data))
 
-    st.download_button(f"📥 設定ファイルを保存", tar_buf.getvalue(), f"{shop_name}.tar")
+    st.download_button(f"📥 {shop_name}.tar を保存", tar_buf.getvalue(), f"{shop_name}.tar")
