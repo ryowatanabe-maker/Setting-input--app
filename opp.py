@@ -5,13 +5,14 @@ import json
 import tarfile
 from datetime import datetime, timedelta, time
 import os
+import csv
 
-# --- 1. 定数設定 (見本CSV 236列構成準拠) ---
+# --- 1. 定数設定 (236列構成準拠) ---
 NUM_COLS = 236 
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-st.set_page_config(page_title="FitPlus Pro v420", layout="wide")
+st.set_page_config(page_title="FitPlus Pro v430", layout="wide")
 
 # セッション状態の初期化
 if 'z_list' not in st.session_state: st.session_state.z_list = []
@@ -20,6 +21,15 @@ if 's_list' not in st.session_state: st.session_state.s_list = []
 if 't_df' not in st.session_state: 
     st.session_state.t_df = pd.DataFrame(columns=["時刻", "シーン選択", "繰り返し"])
 if 'p_list' not in st.session_state: st.session_state.p_list = []
+
+# 時刻変換用の安全な関数
+def safe_to_time(val):
+    if isinstance(val, time): return val
+    s = str(val).strip()
+    for fmt in ("%H:%M:%S", "%H:%M"):
+        try: return datetime.strptime(s, fmt).time()
+        except: continue
+    return time(0, 0)
 
 # --- 2. プロジェクト管理 ---
 st.sidebar.title("🏢 プロジェクト管理")
@@ -40,43 +50,43 @@ c1, c2 = st.columns(2)
 vz = [z["名"] for z in st.session_state.z_list]
 
 with c1:
-    st.subheader("📍 ゾーン履歴")
+    st.subheader("📍 ゾーン (履歴)")
     with st.form("z_form", clear_on_submit=True):
         zn = st.text_input("ゾーン名")
-        zf = st.number_input("フェード時間(秒)", 0, 3600, 0)
-        if st.form_submit_button("ゾーン追加"):
+        zf = st.number_input("フェード(秒)", 0, 3600, 0)
+        if st.form_submit_button("追加"):
             if zn: st.session_state.z_list.append({"名": zn, "秒": zf}); st.rerun()
     for i, z in enumerate(st.session_state.z_list):
         cols = st.columns([4, 1])
-        cols[0].info(f"ゾーン: {z['名']} / {z['秒']}s")
-        if cols[1].button("削除", key=f"dz_{i}"):
-            st.session_state.z_list.pop(i); st.rerun()
+        cols[0].info(f"{z['名']} ({z['秒']}s)")
+        if cols[1].button("削除", key=f"dz_{i}"): st.session_state.z_list.pop(i); st.rerun()
 
 with c2:
-    st.subheader("💡 グループ履歴")
+    st.subheader("💡 グループ (履歴)")
     with st.form("g_form", clear_on_submit=True):
         gn = st.text_input("グループ名")
         gt = st.selectbox("タイプ", list(GROUP_TYPES.keys()))
         gz = st.selectbox("所属ゾーン", options=[""] + vz)
-        if st.form_submit_button("グループ追加"):
+        if st.form_submit_button("追加"):
             if gn and gz: st.session_state.g_list.append({"名": gn, "型": gt, "ゾ": gz}); st.rerun()
     for i, g in enumerate(st.session_state.g_list):
         cols = st.columns([4, 1])
-        cols[0].success(f"{g['名']} [{g['型']}] ({g['ゾ']})")
-        if cols[1].button("削除", key=f"dg_{i}"):
-            st.session_state.g_list.pop(i); st.rerun()
+        cols[0].success(f"{g['名']} / {g['型']} ({g['ゾ']})")
+        if cols[1].button("削除", key=f"dg_{i}"): st.session_state.g_list.pop(i); st.rerun()
 
 st.divider()
 
-# --- 4. シーン作成 & 履歴 ---
-st.header("2. シーン作成 & 履歴")
-c_edit, c_hist = st.columns([1, 1])
+# --- 4. シーン作成 ---
+st.header("2. シーン作成 & パレット画像")
+c_edit, c_pal = st.columns([1, 1])
+
+with c_pal:
+    if os.path.exists("synca_palette.png"):
+        st.image("synca_palette.png", caption="Syncaパレット参照用", width=400)
+    else:
+        st.info("🎨 `synca_palette.png` を配置するとここにパレット画像が表示されます")
 
 with c_edit:
-    st.subheader("🎨 シーン新規作成")
-    if os.path.exists("synca_palette.png"):
-        st.image("synca_palette.png", caption="Syncaパレット", width=400)
-    
     s_name = st.text_input("シーン名")
     s_zone = st.selectbox("対象ゾーン", options=[""] + vz, key="sz_s")
 
@@ -88,7 +98,7 @@ with c_edit:
                 dim = st.slider(f"調光%", 0, 100, 100, key=f"d_{g['名']}_{s_name}")
                 ex, ey, kel = "", "", "4000"
                 if "Synca" in g['型']:
-                    mode = st.radio("設定方式", ["パレット", "色温度"], horizontal=True, key=f"m_{g['名']}_{s_name}")
+                    mode = st.radio("設定方法", ["パレット", "色温度"], horizontal=True, key=f"m_{g['名']}_{s_name}")
                     if mode == "パレット":
                         cx, cy = st.columns(2)
                         ex = cx.slider("X", 1, 11, 6, key=f"x_{g['名']}")
@@ -98,88 +108,67 @@ with c_edit:
                     kel = st.text_input("色温度(K)", "4000", key=f"k_{g['名']}")
                 scene_tmp.append({"sn": s_name, "gn": g['名'], "zn": s_zone, "dim": dim, "kel": kel, "ex": ex, "ey": ey})
         
-        if st.button("このシーン設定を保存", use_container_width=True):
+        if st.button("このシーンを保存", use_container_width=True):
             if s_name:
                 st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == s_name and s["zn"] == s_zone)]
                 st.session_state.s_list.extend(scene_tmp); st.rerun()
 
-with c_hist:
-    st.subheader("📜 シーン詳細履歴")
-    if not st.session_state.s_list: st.write("なし")
-    else:
-        h_df = pd.DataFrame(st.session_state.s_list)
-        for (sn, zn), group in h_df.groupby(['sn', 'zn']):
-            with st.container(border=True):
-                st.write(f"**{sn}** ({zn})")
-                details = [f"- {r['gn']}: {r['dim']}% / {f'{r['ex']}/{r['ey']}' if r['ex'] else f'{r['kel']}K'}" for _, r in group.iterrows()]
-                st.write("\n".join(details))
-                if st.button("削除", key=f"del_sh_{sn}_{zn}"):
-                    st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == sn and s["zn"] == zn)]
-                    st.rerun()
-
 st.divider()
 
-# --- 5. スケジュール & 特異日 ---
+# --- 5. スケジュール自動生成 (赤池店スタイル) ---
 st.header("3. スケジュール & 特異日設定")
 all_scene_opts = sorted(list(set([f"{s['sn']} [{s['zn']}]" for s in st.session_state.s_list])))
 
 if not all_scene_opts:
     st.warning("先にシーンを登録してください。")
 else:
-    st.subheader("⏰ スケジュール自動生成 (間隔・交互設定)")
+    st.subheader("⏰ 間隔指定・交互シーン生成")
     c1, c2, c3 = st.columns(3)
-    g_start = c1.time_input("開始時刻", value=time(10, 0))
-    g_end = c2.time_input("終了時刻", value=time(21, 0))
+    g_start = c1.time_input("開始", value=time(10, 0))
+    g_end = c2.time_input("終了", value=time(21, 0))
     g_int = c3.number_input("間隔(分)", 1, 120, 8)
     
     sc1, sc2, sc3 = st.columns(3)
-    s_a = sc1.selectbox("シーンA (メイン)", options=all_scene_opts)
-    s_b = sc2.selectbox("シーンB (交互・任意)", options=["なし"] + all_scene_opts)
-    rep_day = sc3.selectbox("適用曜日", options=DAY_OPTIONS)
+    s_a = sc1.selectbox("メインシーン(A)", options=all_scene_opts)
+    s_b = sc2.selectbox("交互シーン(B) ※任意", options=["なし"] + all_scene_opts)
+    s_rep = sc3.selectbox("繰り返し", options=DAY_OPTIONS)
     
-    if st.button("⏰ タイムラインを一括生成して表に追加"):
+    if st.button("⏰ スケジュールを一括自動生成して追加"):
         new_rows = []
         curr = datetime.combine(datetime.today(), g_start)
         end = datetime.combine(datetime.today(), g_end)
         idx = 0
         while curr <= end:
             s_target = s_a if (idx % 2 == 0 or s_b == "なし") else s_b
-            new_rows.append({"時刻": curr.time(), "シーン選択": s_target, "繰り返し": rep_day})
+            new_rows.append({"時刻": curr.time(), "シーン選択": s_target, "繰り返し": s_rep})
             curr += timedelta(minutes=g_int)
             idx += 1
-        # 型エラーを防ぐため時刻をtimeオブジェクトで追加
         st.session_state.t_df = pd.concat([st.session_state.t_df, pd.DataFrame(new_rows)]).drop_duplicates().sort_values("時刻")
-        st.success("追加しました。")
+        st.success("追加しました。下の表で編集可能です。")
 
-    st.subheader("📝 スケジュール個別編集")
-    # APIエラー対策: data_editorに渡す前に型をtimeに強制
-    st.session_state.t_df["時刻"] = st.session_state.t_df["時刻"].apply(
-        lambda x: x if isinstance(x, time) else datetime.strptime(str(x), "%H:%M:%S").time()
-    )
-    
+    # 常に時刻の型をきれいに保つ
+    st.session_state.t_df["時刻"] = st.session_state.t_df["時刻"].apply(safe_to_time)
+
     st.session_state.t_df = st.data_editor(
         st.session_state.t_df,
         column_config={
             "時刻": st.column_config.TimeColumn("時刻", format="HH:mm", required=True),
-            "シーン選択": st.column_config.SelectboxColumn("シーン [ゾーン]", options=all_scene_opts, required=True),
-            "繰り返し": st.column_config.SelectboxColumn("繰り返し", options=DAY_OPTIONS, required=True)
+            "シーン選択": st.column_config.SelectboxColumn("シーン選択", options=all_scene_opts, required=True),
+            "繰り返し": st.column_config.SelectboxColumn("適用曜日", options=DAY_OPTIONS, required=True)
         },
-        num_rows="dynamic", use_container_width=True, key="tt_editor_v2"
+        num_rows="dynamic", use_container_width=True
     )
 
-    st.subheader("📅 期間・特異日設定")
+    st.subheader("📅 特異日設定")
     with st.form("p_form", clear_on_submit=True):
-        pn = st.text_input("名称")
+        pn = st.text_input("特異日名称")
         pc1, pc2 = st.columns(2)
         p_sd, p_ed = pc1.date_input("開始日"), pc2.date_input("終了日")
         p_target_z = st.selectbox("対象ゾーン", options=vz)
         p_rep = st.selectbox("適用スケジュール", options=DAY_OPTIONS)
-        if st.form_submit_button("特異日追加"):
+        if st.form_submit_button("追加"):
             st.session_state.p_list.append({"名": pn, "zn": p_target_z, "sd": p_sd, "ed": p_ed, "rep": p_rep})
             st.rerun()
-    for i, p in enumerate(st.session_state.p_list):
-        cols = st.columns([4, 1]); cols[0].warning(f"🗓️ {p['名']}: {p['sd']}～{p['ed']} ({p['zn']})")
-        if cols[1].button("削除", key=f"dp_{i}"): st.session_state.p_list.pop(i); st.rerun()
 
 st.divider()
 
@@ -190,8 +179,8 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
     for i, z in enumerate(st.session_state.z_list): df.iloc[i, 0:3] = [z["名"], "", z["秒"]]
     for i, g in enumerate(st.session_state.g_list): df.iloc[i, 4:8] = [g["名"], "", GROUP_TYPES[g["型"]], g["ゾ"]]
     for i, r in enumerate(st.session_state.s_list):
-        # 日付化防止: ' を付与
-        color = f"'{r['ex']}/{r['ey']}" if r['ex'] != "" else r['kel']
+        color = f"{r['ex']}/{r['ey']}" if r['ex'] != "" else r['kel']
+        # index 13: perform列を空欄
         df.iloc[i, 9:16] = [r["sn"], "", r["dim"], color, "", r["zn"], r["gn"]]
     
     idx_tt = 0
@@ -214,7 +203,7 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
     for i, p in enumerate(st.session_state.p_list):
         df.iloc[i, 193:198] = [p["名"], p["sd"].strftime("%m月%d日"), p["ed"].strftime("%m月%d日"), f"{p['zn']}_{p['rep']}_TT", p['zn']]
 
-    # ヘッダー (236列完全再現)
+    # ヘッダー構築 (236列完全再現)
     h0 = [""] * NUM_COLS
     h0[0], h0[4], h0[9], h0[17], h0[183], h0[193] = 'Zone情報','Group情報','Scene情報','Timetable情報','Timetable-schedule情報','Timetable期間/特異日情報'
     h2 = [""] * NUM_COLS
@@ -225,8 +214,8 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
 
     final_df = pd.concat([pd.DataFrame([h0, [""]*NUM_COLS, h2]), df], ignore_index=True)
     csv_buf = io.BytesIO()
-    # quoting=1 (QUOTE_ALL) で全ての値を引用符で囲み、日付化を徹底防御
-    final_df.to_csv(csv_buf, index=False, header=False, encoding="utf-8-sig", lineterminator='\r\n', quoting=1)
+    # quoting=csv.QUOTE_ALL (1) で全ての値を強制的に引用符で囲み、日付変換を完全に防ぐ
+    final_df.to_csv(csv_buf, index=False, header=False, encoding="utf-8-sig", lineterminator='\r\n', quoting=csv.QUOTE_ALL)
     
     tar_buf = io.BytesIO()
     with tarfile.open(fileobj=tar_buf, mode="w", format=tarfile.USTAR_FORMAT) as tar:
