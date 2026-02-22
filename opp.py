@@ -10,8 +10,9 @@ import os
 NUM_COLS = 73 
 Z_ID_BASE, G_ID_BASE, S_ID_BASE, T_ID_BASE = 4097, 32769, 8193, 12289
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
+DAY_OPTIONS = ["毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-st.set_page_config(page_title="FitPlus Pro v160", layout="wide")
+st.set_page_config(page_title="FitPlus Pro v170", layout="wide")
 
 # セッション状態の初期化
 for key in ['z_list', 'g_list', 's_list', 't_list', 'p_list']:
@@ -89,11 +90,13 @@ if s_zone:
 
 st.divider()
 
-# --- 5. タイムテーブル設定 ---
+# --- 5. タイムテーブル設定 (プルダウン対応) ---
 st.header("3. タイムテーブル設定")
-t_zone = st.selectbox("スケジュールを設定するゾーン", options=[""] + vz, key="t_sz")
+t_zone = st.selectbox("設定ゾーン", options=[""] + vz, key="t_sz")
 if t_zone:
+    # 選択可能なシーン名を取得
     scenes = sorted(list(set([s["sn"] for s in st.session_state.s_list if s["zn"] == t_zone])))
+    
     st.subheader("⏰ タイムテーブル自動生成")
     if scenes:
         c1, c2, c3 = st.columns(3)
@@ -105,23 +108,51 @@ if t_zone:
             new_slots = []
             curr = datetime.combine(datetime.today(), start_t)
             end = datetime.combine(datetime.today(), end_t)
-            # マニュアル上限100スロット 
             while curr <= end and len(new_slots) < 100:
                 new_slots.append({"時刻": curr.strftime("%H:%M"), "シーン": scenes[0]})
                 curr += timedelta(minutes=interval)
             st.session_state[f"tt_{t_zone}"] = new_slots
 
+    st.subheader("📝 タイムテーブル個別編集")
+    # プルダウンを反映させるための設定
+    column_config = {
+        "シーン": st.column_config.SelectboxColumn("シーン選択", options=scenes, required=True),
+        "時刻": st.column_config.TimeColumn("時刻", format="HH:mm", required=True)
+    }
+
     if f"tt_{t_zone}" not in st.session_state:
         st.session_state[f"tt_{t_zone}"] = [{"時刻": "00:00", "シーン": scenes[0] if scenes else ""}]
     
-    tt_data = st.data_editor(st.session_state[f"tt_{t_zone}"], num_rows="dynamic", use_container_width=True, key=f"ed_{t_zone}")
+    tt_data = st.data_editor(
+        st.session_state[f"tt_{t_zone}"], 
+        column_config=column_config,
+        num_rows="dynamic", 
+        use_container_width=True, 
+        key=f"ed_{t_zone}"
+    )
     
-    if st.button("タイムテーブル保存"):
-        if not tt_data or tt_data[0]["時刻"] != "00:00":
-            st.error("最初の時刻は 00:00 に設定してください。")
-        else:
-            st.session_state.t_list = [t for t in st.session_state.t_list if t["zn"] != t_zone]
-            st.session_state.t_list.append({"zn": t_zone, "tn": f"{t_zone}_TT", "slots": tt_data}); st.success("保存完了")
+    st.subheader("📅 繰り返し・期間設定")
+    with st.form("schedule_meta"):
+        # 繰り返しの種類をプルダウン化
+        repeat_day = st.selectbox("適用の繰り返し設定", options=DAY_OPTIONS)
+        if st.form_submit_button("この設定で保存"):
+            # 時刻を文字列に変換(TimeColumn対策)
+            final_slots = []
+            for s in tt_data:
+                t_str = s["時刻"].strftime("%H:%M") if hasattr(s["時刻"], "strftime") else s["時刻"]
+                final_slots.append({"時刻": t_str, "シーン": s["シーン"]})
+                
+            if not final_slots or final_slots[0]["時刻"] != "00:00":
+                st.error("最初の時刻は 00:00 に設定してください。")
+            else:
+                st.session_state.t_list = [t for t in st.session_state.t_list if t["zn"] != t_zone]
+                st.session_state.t_list.append({
+                    "zn": t_zone, 
+                    "tn": f"{t_zone}_TT", 
+                    "slots": final_slots,
+                    "repeat": repeat_day
+                })
+                st.success(f"{repeat_day} のスケジュールとして保存しました。")
 
 st.divider()
 
@@ -134,12 +165,20 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
     for i, r in enumerate(st.session_state.s_list):
         color = f"{r['ex']}/{r['ey']}" if r['ex'] != "" else r['kel']
         df_data.iloc[i, 9:17] = [r["sn"], "", r["dim"], color, "static", "", r["zn"], r["gn"]]
+    
+    # タイムテーブル出力 (repeat情報を35列以降の対応セルに配置)
     for i, t in enumerate(st.session_state.t_list):
         df_data.iloc[i, 18:21] = [t["tn"], T_ID_BASE + i, t["zn"]]
+        # スロット書き込み
         for j, slot in enumerate(t["slots"][:80]):
             if 23 + j*2 + 1 < NUM_COLS:
                 df_data.iloc[i, 23 + j*2] = slot["時刻"]
                 df_data.iloc[i, 23 + j*2 + 1] = slot["シーン"]
+        
+        # 繰り返し設定 (index 35: zone-ts, 36: daily, 37: monday...)
+        repeat_idx = 36 if t["repeat"] == "毎日" else 37 + DAY_OPTIONS.index(t["repeat"]) - 1
+        df_data.iloc[i, 35] = t["zn"] # [zone-ts]
+        df_data.iloc[i, repeat_idx] = t["tn"] # 対応する曜日にTT名を記入
 
     h0 = [""] * NUM_COLS
     h0[0], h0[4], h0[9], h0[17], h0[35], h0[45] = 'Zone情報','Group情報','Scene情報','Timetable情報','Timetable-schedule情報','Timetable期間/特異日情報'
@@ -148,7 +187,8 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
     h2[4:8] = ['[group]','[id]','[type]','[zone]']
     h2[9:17] = ['[scene]','[id]','[dimming]','[color]','[perform]','[fresh-key]','[zone]','[group]']
     h2[18:23] = ['[zone-timetable]','[id]','[zone]','[sun-start-scene]','[sun-end-scene]']
-    for j in range(23, min(34, NUM_COLS-1), 2): h2[j], h2[j+1] = '[time]','[scene]'
+    # 繰り返し設定のヘッダー [zone-ts], [daily], [monday]...
+    h2[35:44] = ['[zone-ts]','[daily]','[monday]','[tuesday]','[wednesday]','[thursday]','[friday]','[saturday]','[sunday]']
 
     final_df = pd.concat([pd.DataFrame([h0, [""]*NUM_COLS, h2]), df_data], ignore_index=True)
     csv_buf = io.BytesIO(); final_df.to_csv(csv_buf, index=False, header=False, encoding="utf-8-sig", lineterminator='\r\n')
