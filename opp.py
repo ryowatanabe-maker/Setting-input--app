@@ -11,7 +11,7 @@ NUM_COLS = 73
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-st.set_page_config(page_title="FitPlus Pro v2100", layout="wide")
+st.set_page_config(page_title="FitPlus Pro v2200", layout="wide")
 
 # セッション状態の保持
 if 'z_list' not in st.session_state: st.session_state.z_list = []
@@ -35,6 +35,12 @@ def fmt_t(t): return f"{t.hour}:{t.minute:02}"
 def fmt_d(d): return f"{d.month}月{d.day}日"
 
 st.title("FitPlus ⚙️ 統合設定ツール")
+shop_name_input = st.sidebar.text_input("店舗名", "FitPlus_Project")
+
+if st.sidebar.button("全データをクリア"):
+    for k in ['z_list', 'g_list', 's_list', 'p_list']: st.session_state[k] = []
+    st.session_state.t_df = pd.DataFrame(columns=["時刻", "シーン選択", "繰り返し"])
+    st.rerun()
 
 # --- 1. 構成登録 ---
 st.header("1. ゾーン & グループ登録")
@@ -74,15 +80,15 @@ c_s_main, c_s_list = st.columns([1, 1])
 with c_s_main:
     if os.path.exists("synca_palette.png"):
         st.image("synca_palette.png", caption="Syncaパレット (X:1-11, Y:1-11)", width=400)
-    s_name_in = st.text_input("作成シーン名")
-    s_zone_in = st.selectbox("対象ゾーン選択", options=[""] + vz)
+    s_name_form = st.text_input("作成するシーン名")
+    s_zone_form = st.selectbox("対象ゾーン選択", options=[""] + vz)
 
-    if s_zone_in:
-        target_gs = [g for g in st.session_state.g_list if g["ゾ"] == s_zone_in]
+    if s_zone_form:
+        target_gs = [g for g in st.session_state.g_list if g["ゾ"] == s_zone_form]
         scene_tmp = []
         for g in target_gs:
             with st.expander(f"💡 {g['名']} 設定 ({g['型']})"):
-                dim = st.slider("調光%", 0, 100, 100, key=f"d_{g['名']}_{s_name_in}")
+                dim = st.slider("調光%", 0, 100, 100, key=f"d_{g['名']}_{s_name_form}")
                 ex, ey, kel = "", "", "4000"
                 if "Synca" in g['型']:
                     mode = st.radio("設定方法", ["パレット(演出)", "調色(色温度)"], key=f"m_{g['名']}", horizontal=True)
@@ -93,10 +99,10 @@ with c_s_main:
                     else: kel = st.text_input("色温度(K)", "4000", key=f"ks_{g['名']}")
                 elif g['型'] == "調光調色":
                     kel = st.text_input("色温度(K)", "4000", key=f"k_{g['名']}")
-                scene_tmp.append({"sn": s_name_in, "gn": g['名'], "zn": s_zone_in, "dim": dim, "kel": kel, "ex": ex, "ey": ey})
+                scene_tmp.append({"sn": s_name_form, "gn": g['名'], "zn": s_zone_form, "dim": dim, "kel": kel, "ex": ex, "ey": ey})
         if st.button("このシーン設定を保存", use_container_width=True):
-            if s_name_in:
-                st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == s_name_in and s["zn"] == s_zone_in)]
+            if s_name_form:
+                st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == s_name_form and s["zn"] == s_zone_form)]
                 st.session_state.s_list.extend(scene_tmp); st.rerun()
 
 with c_s_list:
@@ -170,7 +176,7 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
                 rep_idx = 36 if rep_m == "毎日" else 37 + DAY_OPTIONS.index(rep_m) - 1
                 rows[idx_tt][rep_idx] = s_name_core; idx_tt += 1
 
-    # ヘッダー構築 (73列)
+    # ヘッダー構築
     h0, h2 = [""] * NUM_COLS, [""] * NUM_COLS
     h0[0], h0[4], h0[9], h0[17], h0[35], h0[45] = 'Zone情報','Group情報','Scene情報','Timetable情報','Timetable-schedule情報','Timetable期間/特異日情報'
     h2[0:3], h2[4:8], h2[9:17], h2[18:23], h2[35:44], h2[45:50] = ['[zone]','[id]','[fade]'], ['[group]','[id]','[type]','[zone]'], ['[scene]','[id]','[dimming]','[color]','[perform]','[fresh-key]','[zone]','[group]'], ['[zone-timetable]','[id]','[zone]','[sun-start-scene]','[sun-end-scene]'], ['[zone-ts]','[daily]','[monday]','[tuesday]','[wednesday]','[thursday]','[friday]','[saturday]','[sunday]'], ['[zone-period]','[start]','[end]','[timetable]','[zone]']
@@ -188,4 +194,5 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
         j_data = json.dumps({"pair": [], "csv": "setting_data.csv"}).encode('utf-8')
         j_info = tarfile.TarInfo(name="temp.json"); j_info.size = len(j_data); tar.addfile(j_info, io.BytesIO(j_data))
 
-    st.download_button(f"📥 {shop_name}.tar を保存", tar_buf.getvalue(), f"{shop_name}.tar")
+    fn = shop_name_input.replace(" ", "_")
+    st.download_button(f"📥 {fn}.tar を保存", tar_buf.getvalue(), f"{fn}.tar")
