@@ -11,7 +11,7 @@ NUM_COLS = 73
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-st.set_page_config(page_title="FitPlus Pro v4000", layout="wide")
+st.set_page_config(page_title="FitPlus Pro v4100", layout="wide")
 
 # セッション状態の保持
 for k in ['z_list', 'g_list', 's_list', 't_df', 'p_list', 'loop_scenes']:
@@ -64,14 +64,12 @@ with c_reg:
 with c_view:
     st.subheader("📜 登録履歴")
     if st.session_state.z_list:
-        st.write("▼ ゾーン: 名前 / 秒数")
         for i, z in enumerate(st.session_state.z_list):
             cc1, cc2 = st.columns([4, 1]); cc1.info(f"【{z['名']}】 {z['秒']}秒")
             if cc2.button("削除", key=f"dz_{i}"): st.session_state.z_list.pop(i); st.rerun()
     if st.session_state.g_list:
-        st.write("▼ グループ: 名前 / タイプ / ゾーン")
         for i, g in enumerate(st.session_state.g_list):
-            cc1, cc2 = st.columns([4, 1]); cc1.success(f"【{g['名']}】 {g['型']} (ゾーン:{g['ゾ']})")
+            cc1, cc2 = st.columns([4, 1]); cc1.success(f"【{g['名']}】 {g['型']} ({g['ゾ']})")
             if cc2.button("削除", key=f"dg_{i}"): st.session_state.g_list.pop(i); st.rerun()
 
 st.divider()
@@ -158,14 +156,14 @@ if all_scene_opts:
     st.divider()
     st.subheader("📅 特異日設定")
     with st.form("p_form", clear_on_submit=True):
-        pn, pz = st.text_input("特異日名称"), st.selectbox("対象ゾーン", options=vz)
+        pn, pz = st.text_input("名称"), st.selectbox("対象ゾーン", options=vz)
         ps_opts = [s['sn'] for s in st.session_state.s_list if s['zn'] == pz]
         ps_name = st.selectbox("適応シーン(AW列)", options=list(set(ps_opts)))
         pc1, pc2 = st.columns(2); psd, ped = pc1.date_input("開始"), pc2.date_input("終了")
         if st.form_submit_button("特異日を追加"):
             st.session_state.p_list.append({"名": pn, "zn": pz, "sd": psd, "ed": ped, "sn": ps_name}); st.rerun()
 
-# --- 4. 出力 (正確に73列・スロット分割出力版) ---
+# --- 4. 出力 (正確に73列固定・パレット先頭スペース版) ---
 st.divider()
 if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_container_width=True):
     rows = [[""] * NUM_COLS for _ in range(1000)]
@@ -174,27 +172,24 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
     for i, z in enumerate(st.session_state.z_list): rows[i][0], rows[i][1], rows[i][2] = z["名"], "", z["秒"]
     for i, g in enumerate(st.session_state.g_list): rows[i][4], rows[i][5], rows[i][6], rows[i][7] = g["名"], "", GROUP_TYPES[g["型"]], g["ゾ"]
     
-    # Scene (Perform列に 6-6)
+    # Scene
     for i, r in enumerate(st.session_state.s_list):
         if r['ex'] != "":
-            # パレット値: 引用符なしで日付化を防ぐために文字列として結合
-            p_val = f"{r['ex']}-{r['ey']}"
-            rows[i][9], rows[i][10], rows[i][11], rows[i][12], rows[i][13], rows[i][15], rows[i][16] = r["sn"], "", r["dim"], "", p_val, r["zn"], r["gn"]
+            # パレット演出: N列[perform]に先頭スペース付きで出力
+            rows[i][9], rows[i][10], rows[i][11], rows[i][12], rows[i][13], rows[i][15], rows[i][16] = r["sn"], "", r["dim"], "", f" {r['ex']}-{r['ey']}", r["zn"], r["gn"]
         else:
             rows[i][9], rows[i][10], rows[i][11], rows[i][12], rows[i][13], rows[i][15], rows[i][16] = r["sn"], "", r["dim"], r["kel"], "", r["zn"], r["gn"]
     
-    # Timetable (正確に73列にするため、6スロットごとに改行)
+    # Timetable (73列厳守のため6件ごとに分割)
     idx_tt = 0
     for z_name in vz:
         for rep in DAY_OPTIONS:
             slots = st.session_state.t_df[st.session_state.t_df["シーン選択"].str.contains(f"\[{z_name}\]", na=False) & (st.session_state.t_df["繰り返し"] == rep)].copy()
             if not slots.empty:
                 slots = slots.sort_values("時刻")
-                # 6スロットごとに新しいタイムテーブル行を作成
                 for chunk_idx in range(0, len(slots), 6):
                     chunk = slots.iloc[chunk_idx : chunk_idx + 6]
                     sn_main = chunk.iloc[0]["シーン選択"].split(" [")[0]
-                    # タイムテーブル名（シーン名_番号）
                     tt_name = sn_main if chunk_idx == 0 else f"{sn_main}_{chunk_idx//6 + 1}"
                     
                     rows[idx_tt][18], rows[idx_tt][19], rows[idx_tt][20] = tt_name, "", z_name
@@ -210,7 +205,7 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
     for i, p in enumerate(st.session_state.p_list):
         rows[i][45], rows[i][46], rows[i][47], rows[i][48], rows[i][49] = p["名"], fmt_d(p["sd"]), fmt_d(p["ed"]), p["sn"], p["zn"]
 
-    # 文字列結合 (赤池店の完全なヘッダー構造をコピー)
+    # 文字列結合 (73列固定ヘッダー)
     def to_line(arr): return ",".join([str(x) for x in arr]) + "\r\n"
     h1 = ["Zone情報","","","","Group情報","","","","","Scene情報","","","","","","","","Timetable情報","","","","","","","","","","","","","","","","","","Timetable-schedule情報","","","","","","","","","","Timetable期間/特異日情報","","","","","","","","","","","","","","","","","","","","","","","","","",""]
     h3 = ['[zone]','[id]','[fade]','','[group]','[id]','[type]','[zone]','','[scene]','[id]','[dimming]','[color]','[perform]','[fresh-key]','[zone]','[group]','','[zone-timetable]','[id]','[zone]','[sun-start-scene]','[sun-end-scene]','[time]','[scene]','[time]','[scene]','[time]','[scene]','[time]','[scene]','[time]','[scene]','[time]','[scene]','[zone-ts]','[daily]','[monday]','[tuesday]','[wednesday]','[thursday]','[friday]','[saturday]','[sunday]','','[zone-period]','[start]','[end]','[timetable]','[zone]','','','','','','','','','','','','','','','','','','','','','','','']
@@ -220,7 +215,7 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
 
     tar_buf = io.BytesIO()
     with tarfile.open(fileobj=tar_buf, mode="w", format=tarfile.USTAR_FORMAT) as tar:
-        csv_bytes = csv_str.encode("utf-8-sig") # BOM付きUTF-8
+        csv_bytes = csv_str.encode("utf-8-sig")
         c_info = tarfile.TarInfo(name="setting_data.csv"); c_info.size = len(csv_bytes); tar.addfile(c_info, io.BytesIO(csv_bytes))
         j_data = json.dumps({"pair": [], "csv": "setting_data.csv"}).encode('utf-8')
         j_info = tarfile.TarInfo(name="temp.json"); j_info.size = len(j_data); tar.addfile(j_info, io.BytesIO(j_data))
