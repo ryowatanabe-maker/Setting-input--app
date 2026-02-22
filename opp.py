@@ -8,11 +8,10 @@ import os
 
 # --- 1. 定数設定 (成功モデルの73列構成) ---
 NUM_COLS = 73 
-G_ID_START = 32769
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-st.set_page_config(page_title="FitPlus Pro v1400", layout="wide")
+st.set_page_config(page_title="FitPlus Pro v1500", layout="wide")
 
 # セッション状態
 if 'z_list' not in st.session_state: st.session_state.z_list = []
@@ -30,14 +29,13 @@ def safe_to_time(val):
         except: continue
     return time(0, 0)
 
-# 成功事例の書式：0を抜く (9:00, 3月1日)
 def fmt_t(t): return f"{t.hour}:{t.minute:02}"
 def fmt_d(d): return f"{d.month}月{d.day}日"
 
-st.title("FitPlus ⚙️ 統合設定ツール (ID空欄・成功事例準拠)")
+st.title("FitPlus ⚙️ 統合設定ツール (全ID空欄・安定版)")
 shop_name = st.sidebar.text_input("店舗名", "FitPlus_Project")
 
-# --- UI ---
+# --- 1. 登録 UI ---
 c_reg, c_view = st.columns([1, 1])
 vz = [z["名"] for z in st.session_state.z_list]
 with c_reg:
@@ -64,6 +62,7 @@ with c_view:
         if cc2.button("削除", key=f"dg_{i}"): st.session_state.g_list.pop(i); st.rerun()
 
 st.divider()
+# --- 2. シーン & スケジュール ---
 st.header("2. シーン & スケジュール")
 col_s1, col_s2 = st.columns([1, 1])
 with col_s1:
@@ -79,7 +78,7 @@ with col_s1:
                 if "Synca" in g['型']:
                     cx, cy = st.columns(2)
                     ex, ey = cx.slider("X", 1, 11, 6, key=f"x_{g['名']}"), cy.slider("Y", 1, 11, 6, key=f"y_{g['名']}")
-                elif g['型'] == "調光調色": kel = st.text_input("K", "4000", key=f"k_{g['名']}")
+                elif g['型'] == "調光調色": kel = st.text_input("色温度(K)", "4000", key=f"k_{g['名']}")
                 scene_tmp.append({"sn": s_name, "gn": g['名'], "zn": s_zone, "dim": dim, "kel": kel, "ex": ex, "ey": ey})
         if st.button("このシーンを保存", use_container_width=True):
             st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == s_name and s["zn"] == s_zone)]
@@ -87,11 +86,11 @@ with col_s1:
 
 all_scene_opts = sorted(list(set([f"{s['sn']} [{s['zn']}]" for s in st.session_state.s_list])))
 if all_scene_opts:
-    st.subheader("⏰ 8分毎・交互生成")
+    st.subheader("⏰ スケジュール生成・編集")
     c1, c2, c3 = st.columns(3)
-    g_start, g_end, g_int = c1.time_input("開始", value=time(10, 0)), c2.time_input("終了", value=time(21, 0)), c3.number_input("分", 1, 120, 8)
+    g_start, g_end, g_int = c1.time_input("開始", value=time(10, 0)), c2.time_input("終了", value=time(21, 0)), c3.number_input("間隔(分)", 1, 120, 8)
     sa, sb, sr = st.selectbox("A", all_scene_opts), st.selectbox("B", ["なし"]+all_scene_opts), st.selectbox("曜日", DAY_OPTIONS)
-    if st.button("生成"):
+    if st.button("スケジュールを一括生成"):
         new_r = []
         curr, idx = datetime.combine(datetime.today(), g_start), 0
         while curr <= datetime.combine(datetime.today(), g_end) and len(new_r) < 6:
@@ -101,19 +100,19 @@ if all_scene_opts:
     st.session_state.t_df["時刻"] = st.session_state.t_df["時刻"].apply(safe_to_time)
     st.session_state.t_df = st.data_editor(st.session_state.t_df, num_rows="dynamic", use_container_width=True)
 
-# --- 5. 出力 (ゾーン・シーンIDを空欄化) ---
+# --- 3. 出力 (すべてのIDを空欄化) ---
 st.divider()
 if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_container_width=True):
     rows = [[""] * NUM_COLS for _ in range(500)]
-    # ゾーンID(1)は空欄
+    # Zone ID(1): 空欄
     for i, z in enumerate(st.session_state.z_list): rows[i][0], rows[i][1], rows[i][2] = z["名"], "", z["秒"]
-    # グループID(5)は32769〜
-    for i, g in enumerate(st.session_state.g_list): rows[i][4], rows[i][5], rows[i][6], rows[i][7] = g["名"], G_ID_START + i, GROUP_TYPES[g["型"]], g["ゾ"]
-    # シーンID(10)は空欄
+    # Group ID(5): 空欄
+    for i, g in enumerate(st.session_state.g_list): rows[i][4], rows[i][5], rows[i][6], rows[i][7] = g["名"], "", GROUP_TYPES[g["型"]], g["ゾ"]
+    # Scene ID(10): 空欄
     for i, r in enumerate(st.session_state.s_list):
         col = f"{r['ex']}/{r['ey']}" if r['ex'] != "" else r['kel']
         rows[i][9], rows[i][10], rows[i][11], rows[i][12], rows[i][13], rows[i][15], rows[i][16] = r["sn"], "", r["dim"], col, "static", r["zn"], r["gn"]
-    # TimetableID(19)は空欄
+    # Timetable ID(19): 空欄
     idx_tt = 0
     for z_name in vz:
         for rep in DAY_OPTIONS:
@@ -128,11 +127,6 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
                 rep_c = 36 if rep == "毎日" else 37 + DAY_OPTIONS.index(rep) - 1
                 rows[idx_tt][rep_c] = tt_n; idx_tt += 1
 
-    # 特異日
-    for i, p in enumerate(st.session_state.p_list):
-        rows[i][45], rows[i][46], rows[i][47], rows[i][48], rows[i][49] = p["名"], fmt_d(p["sd"]), fmt_d(p["ed"]), f"{p['zn']}_{p['rep']}_TT", p['zn']
-
-    # ヘッダー (73列厳格)
     h0 = [""] * NUM_COLS
     h0[0], h0[4], h0[9], h0[17], h0[35], h0[45] = 'Zone情報','Group情報','Scene情報','Timetable情報','Timetable-schedule情報','Timetable期間/特異日情報'
     h2 = [""] * NUM_COLS
