@@ -11,7 +11,7 @@ NUM_COLS = 73
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-st.set_page_config(page_title="FitPlus Pro v2800", layout="wide")
+st.set_page_config(page_title="FitPlus Pro v2900", layout="wide")
 
 # セッション状態の保持
 if 'z_list' not in st.session_state: st.session_state.z_list = []
@@ -36,7 +36,7 @@ st.title("FitPlus ⚙️ 統合設定ツール")
 shop_name = st.text_input("🏢 店舗名を入力してください（ファイル名になります）", "FitPlus_Project")
 
 if st.sidebar.button("データを全リセット"):
-    for k in ['z_list', 'g_list', 's_list', 'p_list', 'loop_scenes']: 
+    for k in ['z_list', 'g_list', 's_list', 'loop_scenes']: 
         if k in st.session_state: st.session_state[k] = []
     st.session_state.t_df = pd.DataFrame(columns=["時刻", "シーン選択", "繰り返し"])
     st.rerun()
@@ -54,7 +54,7 @@ with c_reg:
         zn, zf = st.text_input("ゾーン名"), st.number_input("フェード(秒)", 0, 3600, 0)
         if st.button("ゾーンを保存"):
             if zn: st.session_state.z_list.append({"名": zn, "秒": zf}); st.rerun()
-        st.divider()
+    with st.container(border=True):
         st.write("**グループ追加**")
         gn = st.text_input("グループ名")
         gt = st.selectbox("タイプ", list(GROUP_TYPES.keys()))
@@ -79,6 +79,7 @@ if os.path.exists("synca_palette.png"): st.image("synca_palette.png", width=400)
 c_s_reg, c_s_view = st.columns([1, 1])
 
 with c_s_reg:
+    st.subheader("🎨 新規シーン作成")
     s_name_in = st.text_input("シーン名")
     s_zone_in = st.selectbox("対象ゾーン", options=[""] + vz)
     if s_zone_in:
@@ -103,12 +104,12 @@ with c_s_reg:
 
 with c_s_view:
     st.subheader("📜 シーン履歴確認")
-    if not st.session_state.s_list: st.write("保存されたシーンはありません")
+    if not st.session_state.s_list: st.write("保存済みシーンなし")
     else:
         for (sn, zn), group in pd.DataFrame(st.session_state.s_list).groupby(['sn', 'zn']):
             with st.container(border=True):
                 st.write(f"**{sn}** ({zn})")
-                if st.button("削除", key=f"ds_{sn}_{zn}"):
+                if st.button("このシーンを削除", key=f"ds_{sn}_{zn}"):
                     st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == sn and s["zn"] == zn)]; st.rerun()
 
 st.divider()
@@ -120,7 +121,7 @@ if all_scene_opts:
     with st.container(border=True):
         st.subheader("🔄 ループ順序設定")
         c_add, c_clear = st.columns([2, 1])
-        new_scene = c_add.selectbox("追加するシーンを選択", options=all_scene_opts)
+        new_scene = c_add.selectbox("シーンを選択して追加", options=all_scene_opts)
         if c_add.button("＋ 順番に追加"):
             st.session_state.loop_scenes.append(new_scene); st.rerun()
         if c_clear.button("リストをリセット"):
@@ -150,8 +151,8 @@ if st.button("📦 ゲートウェイ用設定ファイルを生成", type="prim
     for i, z in enumerate(st.session_state.z_list): rows[i][0], rows[i][1], rows[i][2] = z["名"], "", z["秒"]
     for i, g in enumerate(st.session_state.g_list): rows[i][4], rows[i][5], rows[i][6], rows[i][7] = g["名"], "", GROUP_TYPES[g["型"]], g["ゾ"]
     for i, r in enumerate(st.session_state.s_list):
-        # パレット値をハイフン形式 6-6 に
-        color_val = f"{r['ex']}-{r['ey']}" if r['ex'] != "" else r['kel']
+        # 6-6問題対策：末尾に半角スペースを1つ追加することでExcelの自動変換を回避
+        color_val = f"{r['ex']}-{r['ey']} " if r['ex'] != "" else r['kel']
         rows[i][9], rows[i][10], rows[i][11], rows[i][12], rows[i][13], rows[i][15], rows[i][16] = r["sn"], "", r["dim"], color_val, "", r["zn"], r["gn"]
     
     idx_tt = 0
@@ -161,6 +162,7 @@ if st.button("📦 ゲートウェイ用設定ファイルを生成", type="prim
             if not slots.empty:
                 slots = slots.sort_values("時刻")
                 sn_main = slots.iloc[0]["シーン選択"].split(" [")[0]
+                # 18列目[zone-timetable]にシーン名を採用
                 rows[idx_tt][18], rows[idx_tt][19], rows[idx_tt][20] = sn_main, "", z_name
                 for j, (_, s) in enumerate(slots.head(6).iterrows()):
                     rows[idx_tt][23 + j*2], rows[idx_tt][24 + j*2] = fmt_t(s["時刻"]), s["シーン選択"].split(" [")[0]
@@ -185,6 +187,5 @@ if st.button("📦 ゲートウェイ用設定ファイルを生成", type="prim
         j_data = json.dumps({"pair": [], "csv": "setting_data.csv"}).encode('utf-8')
         j_info = tarfile.TarInfo(name="temp.json"); j_info.size = len(j_data); tar.addfile(j_info, io.BytesIO(j_data))
 
-    # ファイル名を店舗名に連動
     final_filename = f"{shop_name.replace(' ', '_')}.tar"
     st.download_button(f"📥 {final_filename} を保存", tar_buf.getvalue(), final_filename)
