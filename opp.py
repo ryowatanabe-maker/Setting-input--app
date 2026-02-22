@@ -7,13 +7,17 @@ from datetime import datetime, timedelta, time
 import os
 import csv
 
-# --- 1. 定数設定 (見本CSV 236列構成準拠) ---
+# --- 1. 定数設定 (236列構成準拠) ---
 NUM_COLS = 236 
-G_ID_START = 32769 # グループID開始番号
+Z_ID_START = 4097
+G_ID_START = 32769
+S_ID_START = 8193
+T_ID_START = 12289
+
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-st.set_page_config(page_title="FitPlus Pro v440", layout="wide")
+st.set_page_config(page_title="FitPlus Pro v500", layout="wide")
 
 # セッション状態の初期化
 if 'z_list' not in st.session_state: st.session_state.z_list = []
@@ -48,36 +52,34 @@ c1, c2 = st.columns(2)
 vz = [z["名"] for z in st.session_state.z_list]
 
 with c1:
-    st.subheader("📍 ゾーン履歴")
+    st.subheader("📍 ゾーン設定")
     with st.form("z_form", clear_on_submit=True):
         zn = st.text_input("ゾーン名")
         zf = st.number_input("フェード(秒)", 0, 3600, 0)
-        if st.form_submit_button("ゾーン追加"):
+        if st.form_submit_button("追加"):
             if zn: st.session_state.z_list.append({"名": zn, "秒": zf}); st.rerun()
     for i, z in enumerate(st.session_state.z_list):
-        cols = st.columns([4, 1]); cols[0].info(f"{z['名']} ({z['秒']}s)")
+        cols = st.columns([4, 1]); cols[0].info(f"ID:{Z_ID_START+i} / {z['名']} ({z['秒']}s)")
         if cols[1].button("削除", key=f"dz_{i}"): st.session_state.z_list.pop(i); st.rerun()
 
 with c2:
-    st.subheader("💡 グループ履歴 (ID自動付与)")
+    st.subheader("💡 グループ設定")
     with st.form("g_form", clear_on_submit=True):
         gn = st.text_input("グループ名")
         gt = st.selectbox("タイプ", list(GROUP_TYPES.keys()))
         gz = st.selectbox("所属ゾーン", options=[""] + vz)
-        if st.form_submit_button("グループ追加"):
+        if st.form_submit_button("追加"):
             if gn and gz: st.session_state.g_list.append({"名": gn, "型": gt, "ゾ": gz}); st.rerun()
     for i, g in enumerate(st.session_state.g_list):
-        cols = st.columns([4, 1])
-        # IDを表示
-        cols[0].success(f"ID:{G_ID_START+i} / {g['名']} [{g['型']}]")
+        cols = st.columns([4, 1]); cols[0].success(f"ID:{G_ID_START+i} / {g['名']} ({g['型']})")
         if cols[1].button("削除", key=f"dg_{i}"): st.session_state.g_list.pop(i); st.rerun()
 
 st.divider()
 
-# --- 4. シーン作成 ---
-st.header("2. シーン作成 & パレット画像")
+# --- 4. シーン作成 & パレット画像 ---
+st.header("2. シーン作成")
 if os.path.exists("synca_palette.png"):
-    st.image("synca_palette.png", caption="Syncaパレット参照", width=400)
+    st.image("synca_palette.png", caption="Synca演出パレット参照", width=400)
 
 s_name = st.text_input("シーン名")
 s_zone = st.selectbox("対象ゾーン", options=[""] + vz, key="sz_s")
@@ -109,7 +111,7 @@ st.header("3. スケジュール & 特異日")
 all_scene_opts = sorted(list(set([f"{s['sn']} [{s['zn']}]" for s in st.session_state.s_list])))
 
 if all_scene_opts:
-    st.subheader("⏰ 間隔・交互生成")
+    st.subheader("⏰ 8分毎(間隔指定)・交互生成")
     c1, c2, c3 = st.columns(3)
     g_start, g_end, g_int = c1.time_input("開始", value=time(10, 0)), c2.time_input("終了", value=time(21, 0)), c3.number_input("間隔(分)", 1, 120, 8)
     s_a = st.selectbox("メイン(A)", options=all_scene_opts)
@@ -135,26 +137,32 @@ if all_scene_opts:
                                                "繰り返し": st.column_config.SelectboxColumn("繰り返し", options=DAY_OPTIONS)
                                            })
     
-    st.subheader("📅 特異日設定")
+    st.subheader("📅 特異日・期間設定")
     with st.form("p_form", clear_on_submit=True):
         pn = st.text_input("名称")
         p_sd, p_ed = st.date_input("開始"), st.date_input("終了")
         p_target_z = st.selectbox("対象ゾーン", options=vz)
-        p_rep = st.selectbox("スケジュール種別", options=DAY_OPTIONS)
+        p_rep = st.selectbox("適用スケジュール", options=DAY_OPTIONS)
         if st.form_submit_button("追加"):
             st.session_state.p_list.append({"名": pn, "zn": p_target_z, "sd": p_sd, "ed": p_ed, "rep": p_rep}); st.rerun()
 
 st.divider()
 
-# --- 6. 書き出し ---
+# --- 6. 書き出し (引用符なし・ID付与・日付対策版) ---
 if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_container_width=True):
     df = pd.DataFrame("", index=range(1000), columns=range(NUM_COLS))
-    for i, z in enumerate(st.session_state.z_list): df.iloc[i, 0:3] = [z["名"], "", z["秒"]]
-    for i, g in enumerate(st.session_state.g_list): df.iloc[i, 4:8] = [g["名"], G_ID_START+i, GROUP_TYPES[g["型"]], g["ゾ"]]
-    for i, r in enumerate(st.session_state.s_list):
-        color = f"'{r['ex']}/{r['ey']}" if r['ex'] != "" else r['kel']
-        df.iloc[i, 9:16] = [r["sn"], "", r["dim"], color, "", r["zn"], r["gn"]]
+    # IDの重複を防ぐため、書き出し時に一括付与
+    for i, z in enumerate(st.session_state.z_list): df.iloc[i, 0:3] = [z["名"], Z_ID_START + i, z["秒"]]
+    for i, g in enumerate(st.session_state.g_list): df.iloc[i, 4:8] = [g["名"], G_ID_START + i, GROUP_TYPES[g["型"]], g["ゾ"]]
     
+    # シーンIDも重複しないよう付与
+    s_names = sorted(list(set([s["sn"] for s in st.session_state.s_list])))
+    for i, r in enumerate(st.session_state.s_list):
+        color = f"{r['ex']}/{r['ey']}" if r['ex'] != "" else r['kel']
+        # perform(13)は空欄
+        df.iloc[i, 9:16] = [r["sn"], S_ID_START + s_names.index(r["sn"]), r["dim"], color, "", r["zn"], r["gn"]]
+    
+    # タイムテーブル
     idx_tt = 0
     for z_name in vz:
         for rep in DAY_OPTIONS:
@@ -162,7 +170,7 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
             if not slots.empty:
                 slots = slots.sort_values("時刻")
                 tt_n = f"{z_name}_{rep}_TT"
-                df.iloc[idx_tt, 17:20] = [tt_n, "", z_name]
+                df.iloc[idx_tt, 17:20] = [tt_n, T_ID_START + idx_tt, z_name]
                 for j, (_, s) in enumerate(slots.head(80).iterrows()):
                     df.iloc[idx_tt, 22 + j*2] = s["時刻"].strftime("%H:%M")
                     df.iloc[idx_tt, 23 + j*2] = s["シーン選択"].split(" [")[0]
@@ -173,6 +181,7 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
     for i, p in enumerate(st.session_state.p_list):
         df.iloc[i, 193:198] = [p["名"], p["sd"].strftime("%m月%d日"), p["ed"].strftime("%m月%d日"), f"{p['zn']}_{p['rep']}_TT", p['zn']]
 
+    # ヘッダー (236列)
     h0 = [""] * NUM_COLS
     h0[0], h0[4], h0[9], h0[17], h0[183], h0[193] = 'Zone情報','Group情報','Scene情報','Timetable情報','Timetable-schedule情報','Timetable期間/特異日情報'
     h2 = [""] * NUM_COLS
@@ -182,12 +191,15 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
     h2[193:198] = ['[zone-period]','[start]','[end]','[timetable]','[zone]']
 
     final_df = pd.concat([pd.DataFrame([h0, [""]*NUM_COLS, h2]), df], ignore_index=True)
-    csv_buf = io.BytesIO()
-    final_df.to_csv(csv_buf, index=False, header=False, encoding="utf-8-sig", lineterminator='\r\n', quoting=csv.QUOTE_ALL)
+    
+    # ゲートウェイが読み込めるよう引用符なしで書き出し
+    csv_buf = io.StringIO()
+    final_df.to_csv(csv_buf, index=False, header=False, encoding="utf-8-sig", lineterminator='\r\n', quoting=csv.QUOTE_MINIMAL)
     
     tar_buf = io.BytesIO()
     with tarfile.open(fileobj=tar_buf, mode="w", format=tarfile.USTAR_FORMAT) as tar:
-        b = csv_buf.getvalue(); info = tarfile.TarInfo(name="setting_data.csv"); info.size = len(b); tar.addfile(info, io.BytesIO(b))
+        b = csv_buf.getvalue().encode("utf-8-sig")
+        info = tarfile.TarInfo(name="setting_data.csv"); info.size = len(b); tar.addfile(info, io.BytesIO(b))
         j = json.dumps({"pair": [], "csv": "setting_data.csv"}).encode('utf-8'); ji = tarfile.TarInfo(name="temp.json"); ji.size = len(j); tar.addfile(ji, io.BytesIO(j))
 
     st.download_button(f"📥 {shop_name}_FitPlus.tar を保存", tar_buf.getvalue(), f"{shop_name}.tar")
