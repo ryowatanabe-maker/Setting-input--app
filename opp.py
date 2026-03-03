@@ -6,12 +6,12 @@ import tarfile
 from datetime import datetime, timedelta, time
 import os
 
-# --- 基本設定 (成功した19の構造を基準に) ---
+# --- 1. 基本設定 (成功した19の73列構造をベースに) ---
 NUM_COLS = 73 
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-st.set_page_config(page_title="FitPlus Pro v9000", layout="wide")
+st.set_page_config(page_title="FitPlus Pro v9100", layout="wide")
 
 # セッション状態の初期化
 for k in ['z_list', 'g_list', 's_list', 't_df', 'p_list', 'loop_scenes']:
@@ -30,18 +30,18 @@ def safe_to_time(val):
 def fmt_t(t): return f"{t.hour}:{t.minute:02}"
 def fmt_d(d): return f"{d.month}月{d.day}日"
 
-# --- 店舗名入力 ---
+# --- 0. 店舗名入力 ---
 st.title("FitPlus ⚙️ 統合設定ツール")
-shop_name_input = st.text_input("🏢 店舗名（ファイル名になります）", "FitPlus_Project")
+shop_name_input = st.text_input("🏢 店舗名を入力してください（ファイル名になります）", "FitPlus_Project")
 
-if st.sidebar.button("全データをクリア"):
+if st.sidebar.button("データをリセット"):
     for k in ['z_list', 'g_list', 's_list', 'p_list', 'loop_scenes']: st.session_state[k] = []
     st.session_state.t_df = pd.DataFrame(columns=["時刻", "シーン選択", "繰り返し"])
     st.rerun()
 
 st.divider()
 
-# --- 1. 構成登録 ---
+# --- 1. ゾーン & グループ登録 ---
 c_reg, c_view = st.columns([1, 1])
 vz = [z["名"] for z in st.session_state.z_list]
 
@@ -49,24 +49,24 @@ with c_reg:
     with st.container(border=True):
         st.write("**ゾーン追加**")
         zn = st.text_input("ゾーン名")
-        zf = st.number_input("フェード(秒)", 0, 3600, 0)
-        if st.button("ゾーン保存"):
+        zf = st.number_input("フェード時間(秒)", 0, 3600, 0)
+        if st.button("ゾーンを保存"):
             if zn: st.session_state.z_list.append({"名": zn, "秒": zf}); st.rerun()
     with st.container(border=True):
         st.write("**グループ追加**")
         gn = st.text_input("グループ名")
         gt = st.selectbox("タイプ", list(GROUP_TYPES.keys()))
         gz = st.selectbox("所属ゾーン", options=[""] + vz)
-        if st.button("グループ保存"):
+        if st.button("グループを保存"):
             if gn and gz: st.session_state.g_list.append({"名": gn, "型": gt, "ゾ": gz}); st.rerun()
 
 with c_view:
     st.subheader("📜 登録済み")
     for i, z in enumerate(st.session_state.z_list):
-        cc1, cc2 = st.columns([4, 1]); cc1.info(f"ゾーン: {z['名']} ({z['秒']}s)")
+        cc1, cc2 = st.columns([4, 1]); cc1.info(f"ゾーン: {z['名']} / {z['秒']}s")
         if cc2.button("削除", key=f"dz_{i}"): st.session_state.z_list.pop(i); st.rerun()
     for i, g in enumerate(st.session_state.g_list):
-        cc1, cc2 = st.columns([4, 1]); cc1.success(f"グループ: {g['名']} ({g['型']})")
+        cc1, cc2 = st.columns([4, 1]); cc1.success(f"グループ: {g['名']} / {g['型']}")
         if cc2.button("削除", key=f"dg_{i}"): st.session_state.g_list.pop(i); st.rerun()
 
 st.divider()
@@ -81,23 +81,24 @@ with c_s_reg:
         target_gs = [g for g in st.session_state.g_list if g["ゾ"] == s_zone_in]
         scene_tmp = []
         for g in target_gs:
-            with st.expander(f"⚙️ {g['名']} 設定"):
+            with st.expander(f"💡 {g['名']} 設定"):
                 dim = st.slider("調光%", 0, 100, 100, key=f"d_{g['名']}")
                 ex, ey, kel = "", "", "4000"
                 if "Synca" in g['型']:
                     mode = st.radio("設定", ["パレット", "調色"], key=f"m_{g['名']}", horizontal=True)
                     if mode == "パレット":
                         cx, cy = st.columns(2)
-                        ex, ey = cx.slider("X", 1, 11, 6, key=f"x_{g['名']}"), cy.slider("Y", 1, 11, 6, key=f"y_{g['名']}")
-                    else: kel = st.text_input("K", "4000", key=f"ks_{g['名']}")
-                elif g['型'] == "調光調色": kel = st.text_input("K", "4000", key=f"k_{g['名']}")
+                        ex, ey = cx.slider("演出X", 1, 11, 6, key=f"x_{g['名']}"), cy.slider("演出Y", 1, 11, 6, key=f"y_{g['名']}")
+                    else: kel = st.text_input("色温度", "4000", key=f"ks_{g['名']}")
+                elif g['型'] == "調光調色": kel = st.text_input("色温度", "4000", key=f"k_{g['名']}")
                 scene_tmp.append({"sn": s_name_in, "gn": g['名'], "zn": s_zone_in, "dim": dim, "kel": kel, "ex": ex, "ey": ey})
         if st.button("このシーンを保存"):
-            st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == s_name_in and s["zn"] == s_zone_in)]
-            st.session_state.s_list.extend(scene_tmp); st.rerun()
+            if s_name_in:
+                st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == s_name_in and s["zn"] == s_zone_in)]
+                st.session_state.s_list.extend(scene_tmp); st.rerun()
 
 with c_s_view:
-    st.subheader("📜 シーン詳細履歴")
+    st.subheader("📜 シーン詳細確認")
     if st.session_state.s_list:
         h_df_view = pd.DataFrame(st.session_state.s_list)
         for (sn, zn), group_data in h_df_view.groupby(['sn', 'zn']):
@@ -112,15 +113,15 @@ st.divider()
 
 # --- 3. スケジュール & 特異日 ---
 all_scene_opts = sorted(list(set([f"{s['sn']} [{s['zn']}]" for s in st.session_state.s_list])))
-# エラー回避: 選択肢が空にならないようにする
-current_opts = all_scene_opts if all_scene_opts else ["(シーン未登録)"]
+# シーン未登録時のエラー回避
+current_opts = all_scene_opts if all_scene_opts else ["(未登録)"]
 
 with st.container(border=True):
     st.subheader("🔄 多段ループ生成")
     c_add, c_clear = st.columns([2, 1])
     new_scene = c_add.selectbox("順序に追加", options=current_opts)
     if c_add.button("＋ 追加"):
-        if "(シーン未登録)" not in new_scene: st.session_state.loop_scenes.append(new_scene); st.rerun()
+        if "(未登録)" not in new_scene: st.session_state.loop_scenes.append(new_scene); st.rerun()
     if c_clear.button("クリア"):
         st.session_state.loop_scenes = []; st.rerun()
     
@@ -132,7 +133,7 @@ with st.container(border=True):
         if st.button("⏰ スケジュール生成", use_container_width=True):
             new_r = []
             dt, idx = datetime.combine(datetime.today(), g_st), 0
-            while dt <= datetime.combine(datetime.today(), g_en) and len(new_r) < 300:
+            while dt <= datetime.combine(datetime.today(), g_en) and len(new_r) < 500:
                 new_r.append({"時刻": dt.time(), "シーン選択": st.session_state.loop_scenes[idx % len(st.session_state.loop_scenes)], "繰り返し": g_rp})
                 dt += timedelta(minutes=g_it); idx += 1
             st.session_state.t_df = pd.concat([st.session_state.t_df, pd.DataFrame(new_r)]).drop_duplicates().sort_values("時刻")
@@ -146,18 +147,18 @@ st.session_state.t_df = st.data_editor(st.session_state.t_df, column_config={
 
 st.subheader("📅 特異日設定")
 with st.form("p_form", clear_on_submit=True):
-    pn, pz = st.text_input("特異日名"), st.selectbox("対象ゾーン", options=vz if vz else ["登録なし"])
-    ps_opts = [s['sn'] for s in st.session_state.s_list if s['zn'] == pz] if st.session_state.s_list else []
-    ps_name = st.selectbox("シーン名(AW列)", options=list(set(ps_opts)) if ps_opts else ["登録なし"])
+    pn, pz = st.text_input("特異日名"), st.selectbox("対象ゾーン", options=vz if vz else ["なし"])
+    ps_opts = [s['sn'] for s in st.session_state.s_list if s['zn'] == pz]
+    ps_name = st.selectbox("適用シーン(AW列)", options=list(set(ps_opts)) if ps_opts else ["なし"])
     pc1, pc2 = st.columns(2); psd, ped = pc1.date_input("開始"), pc2.date_input("終了")
-    if st.form_submit_button("特異日を追加"):
-        if pz != "登録なし" and ps_name != "登録なし":
+    if st.form_submit_button("特異日保存"):
+        if pz != "なし" and ps_name != "なし":
             st.session_state.p_list.append({"名": pn, "zn": pz, "sd": psd, "ed": ped, "sn": ps_name}); st.rerun()
 
-# --- 4. 出力 (BOMあり・正確な73列固定) ---
+# --- 4. 出力 (BOM付きUTF-8・73列固定分割出力) ---
 st.divider()
 if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_container_width=True):
-    rows = [[""] * NUM_COLS for _ in range(500)] # 行数も多すぎないように調整 [cite: 26]
+    rows = [[""] * NUM_COLS for _ in range(1000)]
     
     for i, z in enumerate(st.session_state.z_list): rows[i][0], rows[i][1], rows[i][2] = z["名"], "", z["秒"]
     for i, g in enumerate(st.session_state.g_list): rows[i][4], rows[i][5], rows[i][6], rows[i][7] = g["名"], "", GROUP_TYPES[g["型"]], g["ゾ"]
@@ -191,10 +192,10 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
     h1 = ["Zone情報","","","","Group情報","","","","","Scene情報","","","","","","","","Timetable情報","","","","","","","","","","","","","","","","","","Timetable-schedule情報","","","","","","","","","","Timetable期間/特異日情報","","","","","","","","","","","","","","","","","","","","","","","","","",""]
     h3 = ['[zone]','[id]','[fade]','','[group]','[id]','[type]','[zone]','','[scene]','[id]','[dimming]','[color]','[perform]','[fresh-key]','[zone]','[group]','','[zone-timetable]','[id]','[zone]','[sun-start-scene]','[sun-end-scene]','[time]','[scene]','[time]','[scene]','[time]','[scene]','[time]','[scene]','[time]','[scene]','[time]','[scene]','[zone-ts]','[daily]','[monday]','[tuesday]','[wednesday]','[thursday]','[friday]','[saturday]','[sunday]','','[zone-period]','[start]','[end]','[timetable]','[zone]','','','','','','','','','','','','','','','','','','','','','','','']
     
+    # BOM付きUTF-8
     csv_str = to_line(h1) + ("," * 72 + "\r\n") + to_line(h3)
     for r in rows: csv_str += to_line(r)
 
-    # --- TAR書き出し (BOM付きUTF-8に戻す ) ---
     tar_buf = io.BytesIO()
     with tarfile.open(fileobj=tar_buf, mode="w", format=tarfile.USTAR_FORMAT) as tar:
         csv_bytes = csv_str.encode("utf-8-sig")
