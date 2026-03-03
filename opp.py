@@ -6,12 +6,12 @@ import tarfile
 from datetime import datetime, timedelta, time
 import os
 
-# --- 1. 基本設定 (成功した19の73列構造をベースに) ---
+# --- 基本設定 (成功した19の73列構造をベースに) ---
 NUM_COLS = 73 
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-st.set_page_config(page_title="FitPlus Pro v9100", layout="wide")
+st.set_page_config(page_title="FitPlus Pro v9200", layout="wide")
 
 # セッション状態の初期化
 for k in ['z_list', 'g_list', 's_list', 't_df', 'p_list', 'loop_scenes']:
@@ -32,7 +32,7 @@ def fmt_d(d): return f"{d.month}月{d.day}日"
 
 # --- 0. 店舗名入力 ---
 st.title("FitPlus ⚙️ 統合設定ツール")
-shop_name_input = st.text_input("🏢 店舗名を入力してください（ファイル名になります）", "FitPlus_Project")
+shop_name_input = st.text_input("🏢 店舗名を入力してください", "FitPlus_Project")
 
 if st.sidebar.button("データをリセット"):
     for k in ['z_list', 'g_list', 's_list', 'p_list', 'loop_scenes']: st.session_state[k] = []
@@ -113,7 +113,6 @@ st.divider()
 
 # --- 3. スケジュール & 特異日 ---
 all_scene_opts = sorted(list(set([f"{s['sn']} [{s['zn']}]" for s in st.session_state.s_list])))
-# シーン未登録時のエラー回避
 current_opts = all_scene_opts if all_scene_opts else ["(未登録)"]
 
 with st.container(border=True):
@@ -128,7 +127,7 @@ with st.container(border=True):
     if st.session_state.loop_scenes:
         st.info(" ➔ ".join(st.session_state.loop_scenes))
         c1, c2, c3, c4 = st.columns(4)
-        g_st, g_en = c1.time_input("始"), c2.time_input("終")
+        g_st, g_en = c1.time_input("始", value=time(0, 0)), c2.time_input("終", value=time(23, 59))
         g_it, g_rp = c3.number_input("分", 1, 1440, 8), c4.selectbox("曜", DAY_OPTIONS)
         if st.button("⏰ スケジュール生成", use_container_width=True):
             new_r = []
@@ -149,19 +148,19 @@ st.subheader("📅 特異日設定")
 with st.form("p_form", clear_on_submit=True):
     pn, pz = st.text_input("特異日名"), st.selectbox("対象ゾーン", options=vz if vz else ["なし"])
     ps_opts = [s['sn'] for s in st.session_state.s_list if s['zn'] == pz]
-    ps_name = st.selectbox("適用シーン(AW列)", options=list(set(ps_opts)) if ps_opts else ["なし"])
+    ps_name = st.selectbox("シーン名(AW列)", options=list(set(ps_opts)) if ps_opts else ["なし"])
     pc1, pc2 = st.columns(2); psd, ped = pc1.date_input("開始"), pc2.date_input("終了")
-    if st.form_submit_button("特異日保存"):
+    if st.form_submit_button("特異日を追加"):
         if pz != "なし" and ps_name != "なし":
             st.session_state.p_list.append({"名": pn, "zn": pz, "sd": psd, "ed": ped, "sn": ps_name}); st.rerun()
 
-# --- 4. 出力 (BOM付きUTF-8・73列固定分割出力) ---
+# --- 4. 出力 (赤池店記述ルール準拠) ---
 st.divider()
 if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_container_width=True):
     rows = [[""] * NUM_COLS for _ in range(1000)]
     
-    for i, z in enumerate(st.session_state.z_list): rows[i][0], rows[i][1], rows[i][2] = z["名"], "", z["秒"]
-    for i, g in enumerate(st.session_state.g_list): rows[i][4], rows[i][5], rows[i][6], rows[i][7] = g["名"], "", GROUP_TYPES[g["型"]], g["ゾ"]
+    for i, z in enumerate(st.session_state.z_list): rows[i][0], rows[i][2] = z["名"], z["秒"]
+    for i, g in enumerate(st.session_state.g_list): rows[i][4], rows[i][6], rows[i][7] = g["名"], GROUP_TYPES[g["型"]], g["ゾ"]
     
     for i, r in enumerate(st.session_state.s_list):
         p_val = f" {r['ex']}-{r['ey']}" if r['ex'] != "" else ""
@@ -178,9 +177,13 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
                     chunk = slots.iloc[chunk_idx : chunk_idx + 6]
                     sn_main = chunk.iloc[0]["シーン選択"].split(" [")[0]
                     tt_name = sn_main if chunk_idx == 0 else f"{sn_main}_{chunk_idx//6 + 1}"
-                    rows[idx_tt][18], rows[idx_tt][20] = tt_name, z_name
+                    
+                    # 赤池店記述ルール: R(17)に名前, S(18)空欄, T(19)ゾーン
+                    rows[idx_tt][17], rows[idx_tt][18], rows[idx_tt][19] = tt_name, "", z_name
+                    # スケジュール開始位置を X(23) に固定
                     for j, (_, s) in enumerate(chunk.iterrows()):
                         rows[idx_tt][23 + j*2], rows[idx_tt][24 + j*2] = fmt_t(s["時刻"]), s["シーン選択"].split(" [")[0]
+                    
                     rep_idx = 36 if rep == "毎日" else 37 + DAY_OPTIONS.index(rep) - 1
                     rows[idx_tt][35], rows[idx_tt][rep_idx] = z_name, tt_name
                     idx_tt += 1
@@ -192,7 +195,6 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
     h1 = ["Zone情報","","","","Group情報","","","","","Scene情報","","","","","","","","Timetable情報","","","","","","","","","","","","","","","","","","Timetable-schedule情報","","","","","","","","","","Timetable期間/特異日情報","","","","","","","","","","","","","","","","","","","","","","","","","",""]
     h3 = ['[zone]','[id]','[fade]','','[group]','[id]','[type]','[zone]','','[scene]','[id]','[dimming]','[color]','[perform]','[fresh-key]','[zone]','[group]','','[zone-timetable]','[id]','[zone]','[sun-start-scene]','[sun-end-scene]','[time]','[scene]','[time]','[scene]','[time]','[scene]','[time]','[scene]','[time]','[scene]','[time]','[scene]','[zone-ts]','[daily]','[monday]','[tuesday]','[wednesday]','[thursday]','[friday]','[saturday]','[sunday]','','[zone-period]','[start]','[end]','[timetable]','[zone]','','','','','','','','','','','','','','','','','','','','','','','']
     
-    # BOM付きUTF-8
     csv_str = to_line(h1) + ("," * 72 + "\r\n") + to_line(h3)
     for r in rows: csv_str += to_line(r)
 
