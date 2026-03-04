@@ -13,14 +13,17 @@ IDX_TT_ZONE = 19     # [zone] T列
 IDX_TIME_START = 22  # [time] W列
 IDX_ZONE_TS = 197    # [zone-ts] GS列
 IDX_PERIOD_NAME = 207# [zone-period] IC列
+IDX_PERIOD_START = 208# [start] ID列
+IDX_PERIOD_END = 209  # [end] IE列
 IDX_PERIOD_TT = 210  # [timetable] IF列
+IDX_PERIOD_ZONE = 211# [zone] IG列
 
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-st.set_page_config(page_title="FitPlus Pro v9900", layout="wide")
+st.set_page_config(page_title="FitPlus Pro v10000", layout="wide")
 
-# セッション状態の初期化 (履歴が消えないように定義)
+# セッション状態の初期化
 if 'z_list' not in st.session_state: st.session_state.z_list = []
 if 'g_list' not in st.session_state: st.session_state.g_list = []
 if 's_list' not in st.session_state: st.session_state.s_list = []
@@ -44,7 +47,7 @@ def fmt_d(d): return f"{d.month}月{d.day}日"
 st.title("FitPlus ⚙️ 統合設定ツール")
 shop_name = st.text_input("🏢 店舗名を入力", "FitPlus_Project")
 
-if st.sidebar.button("データをリセット"):
+if st.sidebar.button("全データをリセット"):
     st.session_state.z_list = []
     st.session_state.g_list = []
     st.session_state.s_list = []
@@ -89,7 +92,7 @@ if sz_in:
             if "Synca" in g['型']:
                 m = st.radio("設定", ["パレット", "調色"], horizontal=True, key=f"m_{g['名']}")
                 if m == "パレット":
-                    ex, ey = st.slider("X", 1, 11, 6, key=f"x_{g['name']}" if 'name' in g else f"x_{g['名']}"), st.slider("Y", 1, 11, 6, key=f"y_{g['名']}")
+                    ex, ey = st.slider("X", 1, 11, 6, key=f"x_{g['名']}"), st.slider("Y", 1, 11, 6, key=f"y_{g['名']}")
                 else: kel = st.text_input("K", "4000", key=f"ks_{g['名']}")
             elif g['型'] == "調光調色": kel = st.text_input("K", "4000", key=f"k_{g['名']}")
             scene_tmp.append({"sn": sn_in, "gn": g['名'], "zn": sz_in, "dim": dim, "kel": kel, "ex": ex, "ey": ey})
@@ -99,53 +102,72 @@ if sz_in:
 
 # 3. スケジュール
 st.divider()
-st.header("3. スケジュール設定")
+st.header("3. スケジュール & 特異日")
 all_scenes = sorted(list(set([f"{s['sn']} [{s['zn']}]" for s in st.session_state.s_list])))
 
-with st.container(border=True):
-    tt_name = st.text_input("スケジュール名 (例: 通常)", "通常")
-    sel_scene = st.selectbox("追加シーン", options=all_scenes if all_scenes else ["未登録"])
-    if st.button("一括生成リストに追加") and all_scenes:
-        st.session_state.loop_scenes.append(sel_scene); st.rerun()
-    if st.session_state.loop_scenes:
-        st.info("順序: " + " ➔ ".join(st.session_state.loop_scenes))
-        ca, cb, cc = st.columns(3)
-        g_st, g_en = ca.time_input("開始", value=time(0,0)), cb.time_input("終了", value=time(23,59))
-        g_it = cc.number_input("間隔(分)", 1, 1440, 8)
-        rep = st.selectbox("曜日", DAY_OPTIONS)
-        if st.button("⏰ スケジュールを一括生成"):
-            new_r = []
-            dt, idx = datetime.combine(datetime.today(), g_st), 0
-            while dt <= datetime.combine(datetime.today(), g_en) and len(new_r) < 80:
-                new_r.append({"スケジュール名": tt_name, "時刻": dt.time(), "シーン選択": sel_scene if not st.session_state.loop_scenes else st.session_state.loop_scenes[idx % len(st.session_state.loop_scenes)], "繰り返し": rep})
-                dt += timedelta(minutes=g_it); idx += 1
-            # 型エラー回避のための変換処理
-            df_new = pd.DataFrame(new_r)
-            st.session_state.t_df = pd.concat([st.session_state.t_df, df_new]).drop_duplicates()
-            st.session_state.t_df["時刻_tmp"] = pd.to_datetime(st.session_state.t_df["時刻"], format='%H:%M:%S', errors='coerce').fillna(pd.to_datetime(st.session_state.t_df["時刻"], format='%H:%M', errors='coerce'))
-            st.session_state.t_df = st.session_state.t_df.sort_values("時刻_tmp").drop(columns=["時刻_tmp"])
-            st.rerun()
+tab1, tab2 = st.tabs(["通常スケジュール生成", "特異日(期間)設定"])
 
-st.session_state.t_df["時刻"] = st.session_state.t_df["時刻"].apply(safe_to_time)
-st.session_state.t_df = st.data_editor(st.session_state.t_df, num_rows="dynamic", use_container_width=True)
+with tab1:
+    with st.container(border=True):
+        tt_name = st.text_input("スケジュール名 (例: 通常, 春)", "通常")
+        sel_scene = st.selectbox("追加シーン", options=all_scenes if all_scenes else ["未登録"])
+        if st.button("一括生成リストに追加") and all_scenes:
+            st.session_state.loop_scenes.append(sel_scene); st.rerun()
+        if st.session_state.loop_scenes:
+            st.info("順序: " + " ➔ ".join(st.session_state.loop_scenes))
+            ca, cb, cc = st.columns(3)
+            g_st, g_en = ca.time_input("開始", value=time(0,0)), cb.time_input("終了", value=time(23,59))
+            g_it = cc.number_input("間隔(分)", 1, 1440, 8)
+            rep = st.selectbox("曜日", DAY_OPTIONS)
+            if st.button("⏰ スケジュールを一括生成"):
+                new_r = []
+                dt, idx = datetime.combine(datetime.today(), g_st), 0
+                while dt <= datetime.combine(datetime.today(), g_en) and len(new_r) < 80:
+                    new_r.append({"スケジュール名": tt_name, "時刻": dt.time(), "シーン選択": st.session_state.loop_scenes[idx % len(st.session_state.loop_scenes)], "繰り返し": rep})
+                    dt += timedelta(minutes=g_it); idx += 1
+                df_new = pd.DataFrame(new_r)
+                st.session_state.t_df = pd.concat([st.session_state.t_df, df_new]).drop_duplicates()
+                st.session_state.t_df["時刻_tmp"] = pd.to_datetime(st.session_state.t_df["時刻"], format='%H:%M:%S', errors='coerce').fillna(pd.to_datetime(st.session_state.t_df["時刻"], format='%H:%M', errors='coerce'))
+                st.session_state.t_df = st.session_state.t_df.sort_values("時刻_tmp").drop(columns=["時刻_tmp"])
+                st.rerun()
+    st.session_state.t_df["時刻"] = st.session_state.t_df["時刻"].apply(safe_to_time)
+    st.session_state.t_df = st.data_editor(st.session_state.t_df, num_rows="dynamic", use_container_width=True)
 
-# 4. 出力 (赤池店構造・R列/T列配置)
+with tab2:
+    with st.form("period_form", clear_on_submit=True):
+        pn = st.text_input("特異日名称 (例: 正月, 春)")
+        pz = st.selectbox("対象ゾーン", options=vz)
+        existing_tt = list(set(st.session_state.t_df["スケジュール名"].tolist()))
+        ps_name = st.selectbox("割り当てるスケジュール名", options=existing_tt if existing_tt else ["先にスケジュールを生成してください"])
+        pc1, pc2 = st.columns(2)
+        psd, ped = pc1.date_input("開始日"), pc2.date_input("終了日")
+        if st.form_submit_button("特異日を追加"):
+            if pz and ps_name != "先にスケジュールを生成してください":
+                st.session_state.p_list.append({"名": pn, "zn": pz, "sd": psd, "ed": ped, "sn": ps_name})
+                st.rerun()
+    for i, p in enumerate(st.session_state.p_list):
+        st.write(f"📅 {p['名']}: {p['sd']} ~ {p['ed']} ({p['zn']} -> {p['sn']})")
+        if st.button("削除", key=f"del_p_{i}"):
+            st.session_state.p_list.pop(i); st.rerun()
+
+# 4. 出力
 st.divider()
 if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_container_width=True):
     rows = [[""] * TOTAL_COLS for _ in range(1000)]
+    # Zone/Group
     for i, z in enumerate(st.session_state.z_list): rows[i][0], rows[i][2] = z["名"], z["秒"]
     for i, g in enumerate(st.session_state.g_list): rows[i][4], rows[i][6], rows[i][7] = g["名"], GROUP_TYPES[g["型"]], g["ゾ"]
+    # Scene
     for i, r in enumerate(st.session_state.s_list):
         p_val = f" {r['ex']}-{r['ey']}" if r['ex'] != "" else ""
         c_val = r['kel'] if r['ex'] == "" else ""
         rows[i][9], rows[i][11], rows[i][12], rows[i][13], rows[i][14], rows[i][15] = r["sn"], r["dim"], c_val, p_val, r["zn"], r["gn"]
-    
+    # Timetable
     idx_tt = 0
     grouped = st.session_state.t_df.groupby(["スケジュール名", "繰り返し"])
     for (name, rep), data in grouped:
         z_match = [z for z in vz if f"[{z}]" in data.iloc[0]["シーン選択"]]
         if z_match:
-            # 赤池店構造: R(17)スケジュール名, T(19)ゾーン名
             rows[idx_tt][IDX_TT_NAME], rows[idx_tt][IDX_TT_ZONE] = name, z_match[0]
             for j, (_, s) in enumerate(data.sort_values("時刻").iterrows()):
                 col = IDX_TIME_START + j*2
@@ -155,6 +177,13 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
             day_idx = 0 if rep == "毎日" else DAY_OPTIONS.index(rep)
             rows[idx_tt][IDX_ZONE_TS + 1 + day_idx] = name
             idx_tt += 1
+    # 特異日 (復活)
+    for i, p in enumerate(st.session_state.p_list):
+        rows[i][IDX_PERIOD_NAME] = p["名"]
+        rows[i][IDX_PERIOD_START] = fmt_d(p["sd"])
+        rows[i][IDX_PERIOD_END] = fmt_d(p["ed"])
+        rows[i][IDX_PERIOD_TT] = p["sn"]
+        rows[i][IDX_PERIOD_ZONE] = p["zn"]
 
     def to_line(arr): return ",".join([str(x) for x in arr]) + "\r\n"
     h1 = ["Zone情報","","","","Group情報","","","","","Scene情報","","","","","","","","Timetable情報"] + [""]*(IDX_ZONE_TS-18) + ["Timetable-schedule情報"] + [""]*9 + ["Timetable期間/特異日情報"]
