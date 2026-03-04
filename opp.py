@@ -20,9 +20,9 @@ IDX_PERIOD_ZONE = 211# IG列
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["(空白)", "毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-st.set_page_config(page_title="FitPlus Timeline Pro", layout="wide")
+st.set_page_config(page_title="FitPlus Timeline Pro v19000", layout="wide")
 
-# セッション状態
+# セッション状態の初期化
 if 'z_list' not in st.session_state: st.session_state.z_list = []
 if 'g_list' not in st.session_state: st.session_state.g_list = []
 if 's_list' not in st.session_state: st.session_state.s_list = []
@@ -32,15 +32,20 @@ if 'timelines' not in st.session_state: st.session_state.timelines = []
 def fmt_t(t): return f"{t.hour}:{t.minute:02}"
 def fmt_d(d): return f"{d.month}月{d.day}日"
 
-st.title("FitPlus ⚙️ 統合設定ツール (一日完結タイムライン対応)")
+st.title("FitPlus ⚙️ 統合設定ツール")
 shop_name = st.text_input("🏢 店舗名を入力", "FitPlus_Project")
 
-# 1. 登録・修正
+if st.sidebar.button("データをリセット"):
+    st.session_state.clear()
+    st.rerun()
+
+# 1. ゾーン & グループ登録
 st.header("1. ゾーン & グループ登録")
 c1, c2 = st.columns(2)
 vz = [z["名"] for z in st.session_state.z_list]
 with c1:
     with st.container(border=True):
+        st.write("**ゾーン設定**")
         zn, zf = st.text_input("ゾーン名"), st.number_input("フェード(秒)", 0, 3600, 0)
         if st.button("ゾーン保存") and zn:
             st.session_state.z_list = [z for z in st.session_state.z_list if z["名"] != zn]
@@ -52,106 +57,129 @@ with c1:
             st.session_state.g_list = [g for g in st.session_state.g_list if g["名"] != gn]
             st.session_state.g_list.append({"名": gn, "型": gt, "ゾ": gz}); st.rerun()
 with c2:
+    st.write("📜 登録済み")
     for z in st.session_state.z_list: st.info(f"ゾーン: {z['名']} ({z['秒']}s)")
     for g in st.session_state.g_list: st.success(f"グループ: {g['名']} (所属: {g['ゾ']})")
 
-# 2. シーン
+# 2. シーン作成
 st.divider()
 st.header("2. シーン作成")
-sn_in, sz_in = st.text_input("シーン名"), st.selectbox("対象ゾーン", options=[""] + vz)
+sn_in, sz_in = st.text_input("シーン名"), st.selectbox("対象ゾーン選択", options=[""] + vz)
 if sz_in:
     scene_tmp = []
     for g in [g for g in st.session_state.g_list if g["ゾ"] == sz_in]:
-        with st.expander(f"💡 {g['名']}"):
+        with st.expander(f"💡 {g['名']} 設定"):
             dim = st.slider("調光%", 0, 100, 100, key=f"d_{g['名']}")
             ex, ey, kel = "", "", "4000"
             if "Synca" in g['型']:
                 m = st.radio("設定", ["パレット", "調色"], horizontal=True, key=f"m_{g['名']}")
                 if m == "パレット":
-                    ex, ey = st.slider("X", 1, 11, 6, key=f"x_{g['名']}"), st.slider("Y", 1, 11, 6, key=f"y_{g['名']}")
+                    ex, ey = st.slider("演出X", 1, 11, 6, key=f"x_{g['名']}"), st.slider("演出Y", 1, 11, 6, key=f"y_{g['名']}")
                 else: kel = st.text_input("色温度", "4000", key=f"ks_{g['名']}")
             elif g['型'] == "調光調色": kel = st.text_input("色温度", "4000", key=f"k_{g['名']}")
             scene_tmp.append({"sn": sn_in, "gn": g['名'], "zn": sz_in, "dim": dim, "kel": kel, "ex": ex, "ey": ey})
-    if st.button("シーン保存"):
-        st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == sn_in and s["zn"] == sz_in)]
-        st.session_state.s_list.extend(scene_tmp); st.rerun()
+    if st.button("シーンを保存"):
+        if sn_in:
+            st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == sn_in and s["zn"] == sz_in)]
+            st.session_state.s_list.extend(scene_tmp); st.rerun()
 
-# 3. タイムライン (一日完結型)
+st.write("📜 シーン履歴")
+if st.session_state.s_list:
+    h_df = pd.DataFrame(st.session_state.s_list)
+    for (sn, zn), data in h_df.groupby(['sn', 'zn']):
+        with st.expander(f"🎬 {sn} ({zn})"):
+            for _, r in data.iterrows():
+                c_info = f" {r['ex']}-{r['ey']}" if r['ex'] != "" else f"{r['kel']}K"
+                st.write(f"・{r['gn']}: {r['dim']}% / {c_info}")
+            if st.button("このシーンを削除", key=f"del_s_{sn}_{zn}"):
+                st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == sn and s["zn"] == zn)]; st.rerun()
+
+# 3. タイムライン (一日完結型 + 一括生成復活)
 st.divider()
 st.header("3. スケジュール (タイムライン)")
-all_scenes = sorted(list(set([f"{s['sn']} [{s['zn']}]" for s in st.session_state.s_list])))
 
 with st.container(border=True):
-    st.subheader("🗓️ 新しいタイムラインを作成")
-    new_tt_name = st.text_input("スケジュール名を入力", "通常")
-    target_z = st.selectbox("適用するゾーン", options=vz)
+    st.subheader("🗓️ 新しいタイムライン枠の作成")
+    new_tt_name = st.text_input("スケジュール名 (例: 通常)", "通常")
+    target_z = st.selectbox("適用するゾーン", options=[""] + vz)
     rep_day = st.selectbox("適用する曜日", DAY_OPTIONS, index=1)
-    
-    if st.button("タイムライン枠を作成"):
+    if st.button("タイムラインを作成"):
         if new_tt_name and target_z:
             st.session_state.timelines.append({
                 "name": new_tt_name, "zone": target_z, "day": rep_day, 
                 "slots": [{"time": time(0, 0), "scene": ""}]
             }); st.rerun()
 
-st.write("### タイムライン一覧")
 for i, tl in enumerate(st.session_state.timelines):
-    with st.expander(f"📊 {tl['name']} ({tl['zone']}) - {tl['day']}", expanded=True):
-        col1, col2, col3 = st.columns([2, 1, 1])
-        if col3.button("タイムラインを削除", key=f"del_tl_{i}"):
-            st.session_state.timelines.pop(i); st.rerun()
-            
-        # スロット編集
+    with st.expander(f"📊 {tl['name']} (ゾーン: {tl['zone']}) - {tl['day']}", expanded=True):
+        z_scene_names = sorted(list(set([s['sn'] for s in st.session_state.s_list if s['zn'] == tl['zone']])))
+        
+        # --- 一括生成セクションの復活 ---
+        with st.container(border=True):
+            st.write("🔄 **この枠の中にスケジュールを一括生成**")
+            bulk_scenes = st.multiselect("繰り返すシーンの順序", options=z_scene_names, key=f"bulk_s_{i}")
+            ca, cb, cc = st.columns(3)
+            b_en = ca.time_input("終了時刻まで", value=time(23,59), key=f"b_en_{i}")
+            b_it = cb.number_input("間隔(分)", 1, 1440, 10, key=f"b_it_{i}")
+            if st.button("⏰ 0:00から一括上書き生成", key=f"bulk_btn_{i}"):
+                if bulk_scenes:
+                    new_slots = []
+                    dt, idx = datetime.combine(datetime.today(), time(0, 0)), 0
+                    while dt <= datetime.combine(datetime.today(), b_en) and len(new_slots) < 85:
+                        new_slots.append({"time": dt.time(), "scene": bulk_scenes[idx % len(bulk_scenes)]})
+                        dt += timedelta(minutes=b_it); idx += 1
+                    tl['slots'] = new_slots; st.rerun()
+
+        st.write("**個別スロット編集**")
         for j, slot in enumerate(tl['slots']):
             c_time, c_scene, c_del = st.columns([1, 2, 0.5])
-            if j == 0:
-                c_time.write("00:00 (起点)")
-            else:
-                tl['slots'][j]['time'] = c_time.time_input(f"時刻 {j}", slot['time'], key=f"t_{i}_{j}")
+            if j == 0: c_time.write("00:00 (起点)")
+            else: tl['slots'][j]['time'] = c_time.time_input(f"時刻", slot['time'], key=f"t_{i}_{j}")
             
-            # 当該ゾーンのシーンのみ選択可能に
-            z_scenes = [s.split(" [")[0] for s in all_scenes if f"[{tl['zone']}]" in s]
-            tl['slots'][j]['scene'] = c_scene.selectbox(f"シーン {j}", options=[""] + z_scenes, index=z_scenes.index(slot['scene']) + 1 if slot['scene'] in z_scenes else 0, key=f"s_{i}_{j}")
-            
-            if j > 0 and c_del.button("❌", key=f"del_s_{i}_{j}"):
+            tl['slots'][j]['scene'] = c_scene.selectbox(
+                f"シーン", options=[""] + z_scene_names, 
+                index=z_scene_names.index(slot['scene']) + 1 if slot['scene'] in z_scene_names else 0, 
+                key=f"s_{i}_{j}"
+            )
+            if j > 0 and c_del.button("❌", key=f"del_slot_{i}_{j}"):
                 tl['slots'].pop(j); st.rerun()
         
-        if st.button("＋ 時刻を追加", key=f"add_s_{i}"):
+        if st.button("＋ 時刻を追加", key=f"add_slot_{i}"):
             tl['slots'].append({"time": time(12, 0), "scene": ""}); st.rerun()
+        if st.button("🗑️ タイムラインごと削除", key=f"del_tl_{i}"):
+            st.session_state.timelines.pop(i); st.rerun()
 
 # 4. 特異日
 st.divider()
 st.subheader("📅 特異日設定")
 with st.form("p_form", clear_on_submit=True):
     pn = st.text_input("名称")
-    exist_names = list(set([tl['name'] for tl in st.session_state.timelines]))
-    ps_name = st.selectbox("スケジュール名", options=exist_names if exist_names else ["なし"])
-    pc1, pc2 = st.columns(2); psd, ped = pc1.date_input("開始"), pc2.date_input("終了")
-    if st.form_submit_button("特異日保存"):
+    exist_tt_names = sorted(list(set([tl['name'] for tl in st.session_state.timelines])))
+    ps_name = st.selectbox("適応スケジュール", options=exist_tt_names if exist_tt_names else ["なし"])
+    pc1, pc2 = st.columns(2); psd, ped = pc1.date_input("開始日"), pc2.date_input("終了日")
+    if st.form_submit_button("特異日を追加"):
         if ps_name != "なし":
             target_tl = next(tl for tl in st.session_state.timelines if tl['name'] == ps_name)
             st.session_state.p_list.append({"名": pn, "sd": psd, "ed": ped, "sn": ps_name, "zn": target_tl['zone']}); st.rerun()
-for p in st.session_state.p_list: st.write(f"📅 {p['名']} ({p['sd']}~{p['ed']}) -> {p['sn']}")
+for p in st.session_state.p_list:
+    st.write(f"📅 {p['名']} ({p['sd']}~{p['ed']}) -> {p['sn']} ({p['zn']})")
 
 # 5. 出力
 st.divider()
 if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_container_width=True):
     rows = [[""] * TOTAL_COLS for _ in range(1000)]
-    # Zone/Group/Scene
     for i, z in enumerate(st.session_state.z_list): rows[i][0], rows[i][2] = z["名"], z["秒"]
     for i, g in enumerate(st.session_state.g_list): rows[i][4], rows[i][6], rows[i][7] = g["名"], GROUP_TYPES[g["型"]], g["ゾ"]
     for i, r in enumerate(st.session_state.s_list):
         p_val, c_val = (f" {r['ex']}-{r['ey']}", "") if r['ex'] != "" else ("", r['kel'])
         rows[i][9], rows[i][11], rows[i][12], rows[i][13], rows[i][14], rows[i][15] = r["sn"], r["dim"], c_val, p_val, r["zn"], r["gn"]
     
-    # Timetable (赤池店モデル)
     for i, tl in enumerate(st.session_state.timelines):
         rows[i][IDX_TT_NAME], rows[i][IDX_TT_ZONE] = tl['name'], tl['zone']
         sorted_slots = sorted(tl['slots'], key=lambda x: x['time'])
         for j, s in enumerate(sorted_slots):
             col = IDX_TIME_START + j*2
             if col + 1 < IDX_ZONE_TS: rows[i][col], rows[i][col+1] = fmt_t(s['time']), s['scene']
-        
         rows[i][IDX_ZONE_TS] = tl['zone']
         if tl['day'] != "(空白)":
             day_idx = 0 if tl['day'] == "毎日" else DAY_OPTIONS.index(tl['day']) - 1
