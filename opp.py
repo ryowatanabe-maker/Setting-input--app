@@ -18,12 +18,14 @@ IDX_PERIOD_TT = 210  # [timetable] IF列
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-st.set_page_config(page_title="FitPlus Pro v9800", layout="wide")
+st.set_page_config(page_title="FitPlus Pro v9900", layout="wide")
 
-# セッション状態の初期化 (消えないように保護)
-keys = ['z_list', 'g_list', 's_list', 'p_list', 'loop_scenes']
-for k in keys:
-    if k not in st.session_state: st.session_state[k] = []
+# セッション状態の初期化 (履歴が消えないように定義)
+if 'z_list' not in st.session_state: st.session_state.z_list = []
+if 'g_list' not in st.session_state: st.session_state.g_list = []
+if 's_list' not in st.session_state: st.session_state.s_list = []
+if 'p_list' not in st.session_state: st.session_state.p_list = []
+if 'loop_scenes' not in st.session_state: st.session_state.loop_scenes = []
 if 't_df' not in st.session_state:
     st.session_state.t_df = pd.DataFrame(columns=["スケジュール名", "時刻", "シーン選択", "繰り返し"])
 
@@ -42,8 +44,12 @@ def fmt_d(d): return f"{d.month}月{d.day}日"
 st.title("FitPlus ⚙️ 統合設定ツール")
 shop_name = st.text_input("🏢 店舗名を入力", "FitPlus_Project")
 
-if st.sidebar.button("全データをリセット"):
-    for k in keys: st.session_state[k] = []
+if st.sidebar.button("データをリセット"):
+    st.session_state.z_list = []
+    st.session_state.g_list = []
+    st.session_state.s_list = []
+    st.session_state.p_list = []
+    st.session_state.loop_scenes = []
     st.session_state.t_df = pd.DataFrame(columns=["スケジュール名", "時刻", "シーン選択", "繰り返し"])
     st.rerun()
 
@@ -67,7 +73,7 @@ with c2:
     for z in st.session_state.z_list: st.info(f"Z: {z['名']} ({z['秒']}s)")
     for g in st.session_state.g_list: st.success(f"G: {g['名']} ({g['型']})")
 
-# 2. シーン
+# 2. シーン作成
 st.divider()
 st.header("2. シーン作成")
 vz = [z["名"] for z in st.session_state.z_list]
@@ -83,7 +89,7 @@ if sz_in:
             if "Synca" in g['型']:
                 m = st.radio("設定", ["パレット", "調色"], horizontal=True, key=f"m_{g['名']}")
                 if m == "パレット":
-                    ex, ey = st.slider("X", 1, 11, 6, key=f"x_{g['名']}"), st.slider("Y", 1, 11, 6, key=f"y_{g['名']}")
+                    ex, ey = st.slider("X", 1, 11, 6, key=f"x_{g['name']}" if 'name' in g else f"x_{g['名']}"), st.slider("Y", 1, 11, 6, key=f"y_{g['名']}")
                 else: kel = st.text_input("K", "4000", key=f"ks_{g['名']}")
             elif g['型'] == "調光調色": kel = st.text_input("K", "4000", key=f"k_{g['名']}")
             scene_tmp.append({"sn": sn_in, "gn": g['名'], "zn": sz_in, "dim": dim, "kel": kel, "ex": ex, "ey": ey})
@@ -111,30 +117,35 @@ with st.container(border=True):
             new_r = []
             dt, idx = datetime.combine(datetime.today(), g_st), 0
             while dt <= datetime.combine(datetime.today(), g_en) and len(new_r) < 80:
-                new_r.append({"スケジュール名": tt_name, "時刻": dt.time(), "シーン選択": st.session_state.loop_scenes[idx % len(st.session_state.loop_scenes)], "繰り返し": rep})
+                new_r.append({"スケジュール名": tt_name, "時刻": dt.time(), "シーン選択": sel_scene if not st.session_state.loop_scenes else st.session_state.loop_scenes[idx % len(st.session_state.loop_scenes)], "繰り返し": rep})
                 dt += timedelta(minutes=g_it); idx += 1
-            st.session_state.t_df = pd.concat([st.session_state.t_df, pd.DataFrame(new_r)]).drop_duplicates().sort_values("時刻")
+            # 型エラー回避のための変換処理
+            df_new = pd.DataFrame(new_r)
+            st.session_state.t_df = pd.concat([st.session_state.t_df, df_new]).drop_duplicates()
+            st.session_state.t_df["時刻_tmp"] = pd.to_datetime(st.session_state.t_df["時刻"], format='%H:%M:%S', errors='coerce').fillna(pd.to_datetime(st.session_state.t_df["時刻"], format='%H:%M', errors='coerce'))
+            st.session_state.t_df = st.session_state.t_df.sort_values("時刻_tmp").drop(columns=["時刻_tmp"])
+            st.rerun()
 
+st.session_state.t_df["時刻"] = st.session_state.t_df["時刻"].apply(safe_to_time)
 st.session_state.t_df = st.data_editor(st.session_state.t_df, num_rows="dynamic", use_container_width=True)
 
-# 4. 出力
+# 4. 出力 (赤池店構造・R列/T列配置)
 st.divider()
 if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_container_width=True):
     rows = [[""] * TOTAL_COLS for _ in range(1000)]
-    # Zone/Group
     for i, z in enumerate(st.session_state.z_list): rows[i][0], rows[i][2] = z["名"], z["秒"]
     for i, g in enumerate(st.session_state.g_list): rows[i][4], rows[i][6], rows[i][7] = g["名"], GROUP_TYPES[g["型"]], g["ゾ"]
-    # Scene
     for i, r in enumerate(st.session_state.s_list):
         p_val = f" {r['ex']}-{r['ey']}" if r['ex'] != "" else ""
         c_val = r['kel'] if r['ex'] == "" else ""
         rows[i][9], rows[i][11], rows[i][12], rows[i][13], rows[i][14], rows[i][15] = r["sn"], r["dim"], c_val, p_val, r["zn"], r["gn"]
-    # Timetable (R列/T列配置)
+    
     idx_tt = 0
     grouped = st.session_state.t_df.groupby(["スケジュール名", "繰り返し"])
     for (name, rep), data in grouped:
         z_match = [z for z in vz if f"[{z}]" in data.iloc[0]["シーン選択"]]
         if z_match:
+            # 赤池店構造: R(17)スケジュール名, T(19)ゾーン名
             rows[idx_tt][IDX_TT_NAME], rows[idx_tt][IDX_TT_ZONE] = name, z_match[0]
             for j, (_, s) in enumerate(data.sort_values("時刻").iterrows()):
                 col = IDX_TIME_START + j*2
