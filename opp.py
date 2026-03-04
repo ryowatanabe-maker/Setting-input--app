@@ -20,7 +20,7 @@ IDX_PERIOD_ZONE = 211# IG列
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-st.set_page_config(page_title="FitPlus Pro v11000", layout="wide")
+st.set_page_config(page_title="FitPlus Pro v12000", layout="wide")
 
 # セッション状態の初期化
 if 'z_list' not in st.session_state: st.session_state.z_list = []
@@ -58,15 +58,16 @@ if st.sidebar.button("全データをリセット"):
 # 1. 登録
 st.header("1. ゾーン & グループ登録")
 c1, c2 = st.columns(2)
+vz = [z["名"] for z in st.session_state.z_list]
 with c1:
     with st.container(border=True):
-        zn, zf = st.text_input("ゾーン名"), st.number_input("フェード(秒)", 0, 3600, 0)
+        zn, zf = st.text_input("ゾーン名"), st.number_input("フェード時間(秒)", 0, 3600, 0)
         if st.button("ゾーン保存") and zn:
             st.session_state.z_list.append({"名": zn, "秒": zf}); st.rerun()
     with st.container(border=True):
         gn = st.text_input("グループ名")
         gt = st.selectbox("タイプ", list(GROUP_TYPES.keys()))
-        gz = st.selectbox("所属ゾーン", options=[""] + [z["名"] for z in st.session_state.z_list])
+        gz = st.selectbox("所属ゾーン", options=[""] + vz)
         if st.button("グループ保存") and gn and gz:
             st.session_state.g_list.append({"名": gn, "型": gt, "ゾ": gz}); st.rerun()
 with c2:
@@ -77,7 +78,6 @@ with c2:
 # 2. シーン作成
 st.divider()
 st.header("2. シーン作成")
-vz = [z["名"] for z in st.session_state.z_list]
 sn_in = st.text_input("作成シーン名")
 sz_in = st.selectbox("対象ゾーン選択", options=[""] + vz)
 
@@ -102,18 +102,17 @@ if sz_in:
 st.divider()
 st.header("3. スケジュール & 特異日")
 all_scenes = sorted(list(set([f"{s['sn']} [{s['zn']}]" for s in st.session_state.s_list])))
-current_scene_opts = all_scenes if all_scenes else ["(シーン未登録)"]
+current_scene_opts = all_scenes if all_scenes else ["(未登録)"]
 
 tab1, tab2 = st.tabs(["シーンスケジュール", "特異日設定"])
 
 with tab1:
-    # ＋で開く一括生成
-    with st.expander("🔄 スケジュールを一括生成する (多段ループ用)"):
-        tt_name = st.text_input("生成するスケジュール名", "通常")
+    with st.expander("🔄 スケジュールを一括生成する (＋)"):
+        tt_name_input = st.text_input("生成スケジュール名", "通常")
         sel_scene = st.selectbox("順序に追加", options=current_scene_opts)
         c_add, c_clear = st.columns([1, 1])
         if c_add.button("リストへ追加"):
-            if "(シーン未登録)" not in sel_scene: st.session_state.loop_scenes.append(sel_scene); st.rerun()
+            if "(未登録)" not in sel_scene: st.session_state.loop_scenes.append(sel_scene); st.rerun()
         if c_clear.button("順序をクリア"): st.session_state.loop_scenes = []; st.rerun()
         
         if st.session_state.loop_scenes:
@@ -127,7 +126,7 @@ with tab1:
                 dt, idx = datetime.combine(datetime.today(), g_st), 0
                 while dt <= datetime.combine(datetime.today(), g_en) and len(new_r) < 80:
                     new_r.append({
-                        "スケジュール名": tt_name,
+                        "スケジュール名": str(tt_name_input),
                         "時刻": dt.time(),
                         "シーン選択": st.session_state.loop_scenes[idx % len(st.session_state.loop_scenes)],
                         "繰り返し": rep
@@ -136,13 +135,15 @@ with tab1:
                 st.session_state.t_df = pd.concat([st.session_state.t_df, pd.DataFrame(new_r)]).drop_duplicates()
                 st.rerun()
 
-    st.write("**スケジュール表 (直接打ち込み可能)**")
-    # プルダウンを復活させた表
+    st.write("**スケジュール表**")
     st.session_state.t_df["時刻"] = st.session_state.t_df["時刻"].apply(safe_to_time)
+    # エラー防止のため型を強制
+    st.session_state.t_df["スケジュール名"] = st.session_state.t_df["スケジュール名"].astype(str)
+    
     st.session_state.t_df = st.data_editor(
         st.session_state.t_df,
         column_config={
-            "スケジュール名": st.column_config.TextColumn("名前", placeholder="通常", required=True),
+            "スケジュール名": st.column_config.TextColumn("名前", required=True),
             "時刻": st.column_config.TimeColumn("時刻", format="HH:mm", required=True),
             "シーン選択": st.column_config.SelectboxColumn("シーン選択", options=current_scene_opts, required=True),
             "繰り返し": st.column_config.SelectboxColumn("繰り返し", options=DAY_OPTIONS, required=True)
@@ -152,33 +153,32 @@ with tab1:
 
 with tab2:
     with st.form("period_form", clear_on_submit=True):
-        pn = st.text_input("特異日名称 (例: お正月)")
+        pn = st.text_input("特異日名称")
         pz = st.selectbox("対象ゾーン", options=vz)
         existing_tt = list(set(st.session_state.t_df["スケジュール名"].tolist()))
-        ps_name = st.selectbox("割り当てるスケジュール名", options=existing_tt if existing_tt else ["先にスケジュールを生成してください"])
+        ps_name = st.selectbox("適応スケジュール名", options=existing_tt if existing_tt else ["なし"])
         pc1, pc2 = st.columns(2)
         psd, ped = pc1.date_input("開始日"), pc2.date_input("終了日")
         if st.form_submit_button("特異日を追加"):
-            if pz and ps_name != "先にスケジュールを生成してください":
+            if pz and ps_name != "なし":
                 st.session_state.p_list.append({"名": pn, "zn": pz, "sd": psd, "ed": ped, "sn": ps_name})
                 st.rerun()
     for i, p in enumerate(st.session_state.p_list):
         st.write(f"📅 {p['名']}: {p['sd']}~{p['ed']} ({p['zn']}->{p['sn']})")
-        if st.button("削除", key=f"del_p_{i}"): st.session_state.p_list.pop(i); st.rerun()
+        if st.button("削除", key=f"del_p_{i}"):
+            st.session_state.p_list.pop(i); st.rerun()
 
 # 4. 出力
 st.divider()
 if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_container_width=True):
     rows = [[""] * TOTAL_COLS for _ in range(1000)]
-    # Zone/Group
     for i, z in enumerate(st.session_state.z_list): rows[i][0], rows[i][2] = z["名"], z["秒"]
     for i, g in enumerate(st.session_state.g_list): rows[i][4], rows[i][6], rows[i][7] = g["名"], GROUP_TYPES[g["型"]], g["ゾ"]
-    # Scene
     for i, r in enumerate(st.session_state.s_list):
         p_val = f" {r['ex']}-{r['ey']}" if r['ex'] != "" else ""
         c_val = r['kel'] if r['ex'] == "" else ""
         rows[i][9], rows[i][11], rows[i][12], rows[i][13], rows[i][14], rows[i][15] = r["sn"], r["dim"], c_val, p_val, r["zn"], r["gn"]
-    # Timetable
+    
     idx_tt = 0
     grouped = st.session_state.t_df.groupby(["スケジュール名", "繰り返し"])
     for (name, rep), data in grouped:
@@ -193,7 +193,7 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
             day_idx = 0 if rep == "毎日" else DAY_OPTIONS.index(rep)
             rows[idx_tt][IDX_ZONE_TS + 1 + day_idx] = name
             idx_tt += 1
-    # 特異日
+
     for i, p in enumerate(st.session_state.p_list):
         rows[i][IDX_PERIOD_NAME], rows[i][IDX_PERIOD_START], rows[i][IDX_PERIOD_END], rows[i][IDX_PERIOD_TT], rows[i][IDX_PERIOD_ZONE] = p["名"], fmt_d(p["sd"]), fmt_d(p["ed"]), p["sn"], p["zn"]
 
