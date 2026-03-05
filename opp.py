@@ -5,22 +5,23 @@ import json
 import tarfile
 from datetime import datetime, timedelta, time
 
-# --- 赤池店モデル (236列) 設定 ---
+# --- 赤池店モデル (236列) インデックス厳密設定 ---
 TOTAL_COLS = 236
-IDX_TT_NAME = 17     # R列
-IDX_TT_ZONE = 19     # T列
-IDX_TIME_START = 22  # W列
-IDX_ZONE_TS = 197    # GS列
-IDX_PERIOD_NAME = 207# IC列
-IDX_PERIOD_START = 208# ID列
-IDX_PERIOD_END = 209  # IE列
-IDX_PERIOD_TT = 210  # IF列
-IDX_PERIOD_ZONE = 211# IG列
+IDX_TT_NAME = 17     # R列: [zone-timetable]
+IDX_TT_ID = 18       # S列: [id]
+IDX_TT_ZONE = 19     # T列: [zone]
+IDX_TIME_START = 22  # W列: [time] 最初のスロット
+IDX_ZONE_TS = 197    # GS列: [zone-ts]
+IDX_PERIOD_NAME = 207# IC列: [zone-period]
+IDX_PERIOD_START = 208# ID列: [start]
+IDX_PERIOD_END = 209  # IE列: [end]
+IDX_PERIOD_TT = 210  # IF列: [timetable]
+IDX_PERIOD_ZONE = 211# IG列: [zone]
 
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["(空白)", "毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-st.set_page_config(page_title="FitPlus Setting Tool", layout="wide")
+st.set_page_config(page_title="FitPlus Setting Pro", layout="wide")
 
 # セッション状態の初期化
 if 'z_list' not in st.session_state: st.session_state.z_list = []
@@ -70,7 +71,7 @@ with c2:
 # 2. シーン作成
 st.divider()
 st.header("2. シーン作成")
-sn_in, sz_in = st.text_input("シーン名"), st.selectbox("対象ゾーン選択", options=[""] + vz)
+sn_in, sz_in = st.text_input("作成シーン名"), st.selectbox("対象ゾーン選択", options=[""] + vz)
 if sz_in:
     scene_tmp = []
     for g in [g for g in st.session_state.g_list if g["ゾ"] == sz_in]:
@@ -78,7 +79,7 @@ if sz_in:
             dim = st.slider("調光%", 0, 100, 100, key=f"d_{g['名']}")
             ex, ey, kel = "", "", "4000"
             if "Synca" in g['型']:
-                m = st.radio("設定", ["パレット", "調色"], horizontal=True, key=f"m_{g['名']}")
+                m = st.radio("モード", ["パレット", "調色"], horizontal=True, key=f"m_{g['名']}")
                 if m == "パレット":
                     ex, ey = st.slider("演出X", 1, 11, 6, key=f"x_{g['名']}"), st.slider("演出Y", 1, 11, 6, key=f"y_{g['名']}")
                 else: kel = st.text_input("色温度", "4000", key=f"ks_{g['名']}")
@@ -124,7 +125,7 @@ for i, tl in enumerate(st.session_state.timelines):
             bulk_scenes = st.multiselect("順序", options=z_scene_names, key=f"bulk_s_{i}")
             ca, cb, cc = st.columns(3)
             b_en, b_it = ca.time_input("終了まで", value=time(23,59), key=f"b_en_{i}"), cb.number_input("間隔(分)", 1, 1440, 10, key=f"b_it_{i}")
-            if st.button("一括生成実行", key=f"bulk_btn_{i}"):
+            if st.button("一括作成実行", key=f"bulk_btn_{i}"):
                 if bulk_scenes:
                     new_slots = []
                     dt, idx = datetime.combine(datetime.today(), time(0, 0)), 0
@@ -133,7 +134,6 @@ for i, tl in enumerate(st.session_state.timelines):
                         dt += timedelta(minutes=b_it); idx += 1
                     tl['slots'] = new_slots; st.rerun()
 
-        st.write("**個別スロット**")
         for j, slot in enumerate(tl['slots']):
             c_time, c_scene, c_del = st.columns([1, 2, 0.5])
             if j == 0: c_time.write("00:00 (起点)")
@@ -176,11 +176,16 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
         rows[i][9], rows[i][11], rows[i][12], rows[i][13], rows[i][14], rows[i][15] = r["sn"], r["dim"], c_val, p_val, r["zn"], r["gn"]
     
     for i, tl in enumerate(st.session_state.timelines):
-        rows[i][IDX_TT_NAME], rows[i][IDX_TT_ZONE] = tl['name'], tl['zone']
+        # インデックスを赤池店と完全同期: R(17), S(18), T(19)
+        rows[i][IDX_TT_NAME] = tl['name']
+        rows[i][IDX_TT_ID] = ""
+        rows[i][IDX_TT_ZONE] = tl['zone']
+        
         sort_s = sorted(tl['slots'], key=lambda x: x['time'])
         for j, s in enumerate(sort_s):
-            col = IDX_TIME_START + j*2
+            col = IDX_TIME_START + j*2 # W(22)列から開始
             if col + 1 < IDX_ZONE_TS: rows[i][col], rows[i][col+1] = fmt_t(s['time']), s['scene']
+        
         rows[i][IDX_ZONE_TS] = tl['zone']
         if tl['day'] != "(空白)":
             day_idx = 0 if tl['day'] == "毎日" else DAY_OPTIONS.index(tl['day']) - 1
@@ -194,6 +199,7 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
     h3 = ['[zone]','[id]','[fade]','','[group]','[id]','[type]','[zone]','','[scene]','[id]','[dimming]','[color]','[perform]','[zone]','[group]','','[zone-timetable]','[id]','[zone]','[sun-start-scene]','[sun-end-scene]']
     for _ in range(87): h3 += ['[time]','[scene]']
     h3 += ['[zone-ts]','[daily]','[monday]','[tuesday]','[wednesday]','[thursday]','[friday]','[saturday]','[sunday]','','[zone-period]','[start]','[end]','[timetable]','[zone]']
+    
     csv_data = to_line(h1 + [""]*(TOTAL_COLS - len(h1))) + ("," * (TOTAL_COLS-1) + "\r\n") + to_line(h3 + [""]*(TOTAL_COLS - len(h3)))
     for r in rows: csv_data += to_line(r)
 
@@ -203,10 +209,8 @@ if st.button("📦 ゲートウェイ用 .tar を生成", type="primary", use_co
         c_info = tarfile.TarInfo(name="setting_data.csv")
         c_info.size = len(csv_bytes)
         tar.addfile(c_info, io.BytesIO(csv_bytes))
-        
         j_bytes = json.dumps({"pair": [], "csv": "setting_data.csv"}).encode('utf-8')
         j_info = tarfile.TarInfo(name="temp.json")
         j_info.size = len(j_bytes)
         tar.addfile(j_info, io.BytesIO(j_bytes))
-        
     st.download_button(f"📥 {shop_name}.tar を保存", tar_buf.getvalue(), f"{shop_name}.tar")
