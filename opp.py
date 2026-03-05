@@ -20,7 +20,7 @@ IDX_PERIOD_ZONE = 211# IG列
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["(空白)", "毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-st.set_page_config(page_title="FitPlus Timeline Pro v19000", layout="wide")
+st.set_page_config(page_title="FitPlus Timeline Pro v20000", layout="wide")
 
 # セッション状態の初期化
 if 'z_list' not in st.session_state: st.session_state.z_list = []
@@ -35,7 +35,7 @@ def fmt_d(d): return f"{d.month}月{d.day}日"
 st.title("FitPlus ⚙️ 統合設定ツール")
 shop_name = st.text_input("🏢 店舗名を入力", "FitPlus_Project")
 
-if st.sidebar.button("データをリセット"):
+if st.sidebar.button("全データを完全にリセット"):
     st.session_state.clear()
     st.rerun()
 
@@ -57,7 +57,11 @@ with c1:
             st.session_state.g_list = [g for g in st.session_state.g_list if g["名"] != gn]
             st.session_state.g_list.append({"名": gn, "型": gt, "ゾ": gz}); st.rerun()
 with c2:
-    st.write("📜 登録済み")
+    st.subheader("📜 登録履歴")
+    if st.session_state.z_list or st.session_state.g_list:
+        if st.button("ゾーン・グループ履歴をすべて削除", type="secondary"):
+            st.session_state.z_list = []; st.session_state.g_list = []; st.rerun()
+    
     for z in st.session_state.z_list: st.info(f"ゾーン: {z['名']} ({z['秒']}s)")
     for g in st.session_state.g_list: st.success(f"グループ: {g['名']} (所属: {g['ゾ']})")
 
@@ -83,18 +87,20 @@ if sz_in:
             st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == sn_in and s["zn"] == sz_in)]
             st.session_state.s_list.extend(scene_tmp); st.rerun()
 
-st.write("📜 シーン履歴")
+st.subheader("📜 シーン履歴")
 if st.session_state.s_list:
+    if st.button("シーン履歴をすべて削除"):
+        st.session_state.s_list = []; st.rerun()
     h_df = pd.DataFrame(st.session_state.s_list)
     for (sn, zn), data in h_df.groupby(['sn', 'zn']):
         with st.expander(f"🎬 {sn} ({zn})"):
             for _, r in data.iterrows():
                 c_info = f" {r['ex']}-{r['ey']}" if r['ex'] != "" else f"{r['kel']}K"
                 st.write(f"・{r['gn']}: {r['dim']}% / {c_info}")
-            if st.button("このシーンを削除", key=f"del_s_{sn}_{zn}"):
+            if st.button("このシーンのみ削除", key=f"del_s_{sn}_{zn}"):
                 st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == sn and s["zn"] == zn)]; st.rerun()
 
-# 3. タイムライン (一日完結型 + 一括生成復活)
+# 3. タイムライン
 st.divider()
 st.header("3. スケジュール (タイムライン)")
 
@@ -110,18 +116,22 @@ with st.container(border=True):
                 "slots": [{"time": time(0, 0), "scene": ""}]
             }); st.rerun()
 
+st.subheader("📊 タイムライン履歴")
+if st.session_state.timelines:
+    if st.button("すべてのタイムラインを削除"):
+        st.session_state.timelines = []; st.rerun()
+
 for i, tl in enumerate(st.session_state.timelines):
     with st.expander(f"📊 {tl['name']} (ゾーン: {tl['zone']}) - {tl['day']}", expanded=True):
         z_scene_names = sorted(list(set([s['sn'] for s in st.session_state.s_list if s['zn'] == tl['zone']])))
         
-        # --- 一括生成セクションの復活 ---
         with st.container(border=True):
-            st.write("🔄 **この枠の中にスケジュールを一括生成**")
+            st.write("🔄 **一括生成 (0:00〜開始)**")
             bulk_scenes = st.multiselect("繰り返すシーンの順序", options=z_scene_names, key=f"bulk_s_{i}")
             ca, cb, cc = st.columns(3)
             b_en = ca.time_input("終了時刻まで", value=time(23,59), key=f"b_en_{i}")
             b_it = cb.number_input("間隔(分)", 1, 1440, 10, key=f"b_it_{i}")
-            if st.button("⏰ 0:00から一括上書き生成", key=f"bulk_btn_{i}"):
+            if st.button("一括生成実行", key=f"bulk_btn_{i}"):
                 if bulk_scenes:
                     new_slots = []
                     dt, idx = datetime.combine(datetime.today(), time(0, 0)), 0
@@ -146,7 +156,7 @@ for i, tl in enumerate(st.session_state.timelines):
         
         if st.button("＋ 時刻を追加", key=f"add_slot_{i}"):
             tl['slots'].append({"time": time(12, 0), "scene": ""}); st.rerun()
-        if st.button("🗑️ タイムラインごと削除", key=f"del_tl_{i}"):
+        if st.button("🗑️ この枠を削除", key=f"del_tl_{i}"):
             st.session_state.timelines.pop(i); st.rerun()
 
 # 4. 特異日
@@ -161,8 +171,12 @@ with st.form("p_form", clear_on_submit=True):
         if ps_name != "なし":
             target_tl = next(tl for tl in st.session_state.timelines if tl['name'] == ps_name)
             st.session_state.p_list.append({"名": pn, "sd": psd, "ed": ped, "sn": ps_name, "zn": target_tl['zone']}); st.rerun()
-for p in st.session_state.p_list:
-    st.write(f"📅 {p['名']} ({p['sd']}~{p['ed']}) -> {p['sn']} ({p['zn']})")
+
+if st.session_state.p_list:
+    if st.button("特異日履歴をすべて削除"):
+        st.session_state.p_list = []; st.rerun()
+    for p in st.session_state.p_list:
+        st.write(f"📅 {p['名']} ({p['sd']}~{p['ed']}) -> {p['sn']} ({p['zn']})")
 
 # 5. 出力
 st.divider()
