@@ -29,6 +29,10 @@ if 'timelines' not in st.session_state: st.session_state.timelines = []
 def fmt_t(t): return f"{t.hour}:{t.minute:02}"
 def fmt_d(d): return f"{d.month}月{d.day}日"
 
+# 削除用コールバック関数
+def delete_slot(t_idx, s_idx):
+    st.session_state.timelines[t_idx]['slots'].pop(s_idx)
+
 st.title("FitPlus 設定ツール")
 shop_name = st.text_input("店舗名を入力", "FitPlus_Project")
 
@@ -100,7 +104,6 @@ with st.container(border=True):
     tl_z = st.selectbox("適用ゾーン", options=[""]+vz, key="tlz")
     tl_d = st.selectbox("適用曜日", DAY_OPTIONS, index=1)
     if st.button("枠を作成") and tl_n and tl_z:
-        # 初期状態は空ではなく、最初の入力を促すために0:00を1つ入れておきますが、後で自由に変えられます
         st.session_state.timelines.append({"name": tl_n, "zone": tl_z, "day": tl_d, "slots": [{"time": time(0, 0), "scene": ""}]}); st.rerun()
 
 for i, tl in enumerate(st.session_state.timelines):
@@ -124,11 +127,10 @@ for i, tl in enumerate(st.session_state.timelines):
         # スロットの編集
         for j, slot in enumerate(tl['slots']):
             c1, c2, c3 = st.columns([1, 2, 0.5])
-            # 起点というラベルを外し、すべての時刻を編集可能にします
             tl['slots'][j]['time'] = c1.time_input(f"時刻", slot['time'], key=f"t_{i}_{j}")
             tl['slots'][j]['scene'] = c2.selectbox(f"シーン", options=[""]+z_scenes, index=z_scenes.index(slot['scene'])+1 if slot['scene'] in z_scenes else 0, key=f"s_{i}_{j}")
-            if c3.button("削除", key=f"ds_{i}_{j}"): 
-                tl['slots'].pop(j); st.rerun()
+            # 削除ボタンを確実に動作させるために on_click を使用
+            c3.button("削除", key=f"ds_{i}_{j}", on_click=delete_slot, args=(i, j))
         
         c_act1, c_act2 = st.columns(2)
         if c_act1.button("＋ 時刻を追加", key=f"as_{i}"): tl['slots'].append({"time": time(0,0), "scene": ""}); st.rerun()
@@ -163,7 +165,6 @@ if st.button(".tar を生成", type="primary", use_container_width=True):
     # Timetable (絶対位置指定)
     for i, tl in enumerate(st.session_state.timelines):
         rows[i][17], rows[i][19] = tl['name'], tl['zone'] # R=17, T=19
-        # 時刻順にソートして出力
         sort_s = sorted(tl['slots'], key=lambda x: x['time'])
         for j, s in enumerate(sort_s):
             col = IDX_TIME_START + j*2
@@ -177,7 +178,7 @@ if st.button(".tar を生成", type="primary", use_container_width=True):
 
     # 特異日 (IC列=206)
     for i, p in enumerate(st.session_state.p_list):
-        rows[i][IDX_PERIOD_NAME], rows[i][IDX_PERIOD_NAME+1], rows[i][IDX_PERIOD_NAME+2], rows[i][IDX_PERIOD_NAME+3], rows[i][IDX_PERIOD_NAME+4] = p["名"], fmt_d(p["sd"]), fmt_d(p["ed"]), p["sn"], p["zn"]
+        rows[i][IDX_PERIOD_NAME], rows[i][IDX_PERIOD_START], rows[i][IDX_PERIOD_END], rows[i][IDX_PERIOD_TT], rows[i][IDX_PERIOD_ZONE] = p["名"], fmt_d(p["sd"]), fmt_d(p["ed"]), p["sn"], p["zn"]
 
     def to_line(arr): return ",".join([str(x) for x in arr]) + "\r\n"
     h1 = ["Zone情報","","","","Group情報","","","","","Scene情報","","","","","","","","Timetable情報"] + [""]*(IDX_ZONE_TS-18) + ["Timetable-schedule情報"] + [""]*(IDX_PERIOD_NAME-IDX_ZONE_TS-10) + ["Timetable期間/特異日情報"]
@@ -191,7 +192,7 @@ if st.button(".tar を生成", type="primary", use_container_width=True):
     tar_buf = io.BytesIO()
     with tarfile.open(fileobj=tar_buf, mode="w", format=tarfile.USTAR_FORMAT) as tar:
         b = csv_data.encode("utf-8-sig")
-        ti = tarfile.TarInfo("setting_data.csv"); ti.size = len(b); tar.addfile(ti, io.BytesIO(b))
+        ti = tarfile.TarInfo(name="setting_data.csv"); ti.size = len(b); tar.addfile(ti, io.BytesIO(b))
         jb = json.dumps({"pair": [], "csv": "setting_data.csv"}).encode('utf-8')
         tj = tarfile.TarInfo("temp.json"); tj.size = len(jb); tar.addfile(tj, io.BytesIO(jb))
     st.download_button(f"{shop_name}.tar を保存", tar_buf.getvalue(), f"{shop_name}.tar")
