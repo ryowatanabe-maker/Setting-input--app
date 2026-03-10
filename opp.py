@@ -12,7 +12,7 @@ IDX_TT_NAME = 17     # R列
 IDX_TT_ZONE = 19     # T列
 IDX_TIME_START = 22  # W列: スロット開始
 
-# 赤池店実データ解析に基づく正確なインデックス
+# 赤池店実データ解析に基づく正確なインデックス (196, 206を空列にする)
 IDX_ZONE_TS = 197    # GS列 (Index 197): [zone-ts]
 IDX_PERIOD_NAME = 207# GZ列 (Index 207): [zone-period]
 
@@ -49,26 +49,21 @@ vz = [z["名"] for z in st.session_state.z_list]
 c1, c2 = st.columns(2)
 with c1:
     with st.container(border=True):
-        st.write("ゾーン設定")
         zn, zf = st.text_input("ゾーン名"), st.number_input("フェード(秒)", 0, 3600, 0)
         if st.button("ゾーン保存") and zn:
             st.session_state.z_list = [z for z in st.session_state.z_list if z["名"] != zn]
             st.session_state.z_list.append({"名": zn, "秒": zf}); st.rerun()
     with st.container(border=True):
-        st.write("グループ設定")
         gn, gt = st.text_input("グループ名"), st.selectbox("タイプ", list(GROUP_TYPES.keys()))
         gz = st.selectbox("所属ゾーン", options=[""] + vz)
         if st.button("グループ保存") and gn and gz:
             st.session_state.g_list = [g for g in st.session_state.g_list if g["名"] != gn]
             st.session_state.g_list.append({"名": gn, "型": gt, "ゾ": gz}); st.rerun()
 with c2:
-    st.write("登録履歴")
     for i, z in enumerate(st.session_state.z_list):
-        cl1, cl2 = st.columns([4, 1]); cl1.info(f"ゾーン: {z['名']}"); 
-        if cl2.button("削除", key=f"dz_{i}"): st.session_state.z_list.pop(i); st.rerun()
+        cl1, cl2 = st.columns([4, 1]); cl1.info(f"ゾーン: {z['名']}"); (cl2.button("削除", key=f"dz_{i}") and [st.session_state.z_list.pop(i), st.rerun()])
     for i, g in enumerate(st.session_state.g_list):
-        cl1, cl2 = st.columns([4, 1]); cl1.success(f"グループ: {g['名']} ({g['ゾ']})"); 
-        if cl2.button("削除", key=f"dg_{i}"): st.session_state.g_list.pop(i); st.rerun()
+        cl1, cl2 = st.columns([4, 1]); cl1.success(f"グループ: {g['名']} ({g['ゾ']})"); (cl2.button("削除", key=f"dg_{i}") and [st.session_state.g_list.pop(i), st.rerun()])
 
 # 2. シーン作成
 st.divider()
@@ -91,6 +86,17 @@ if sz_in:
             st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == sn_in and s["zn"] == sz_in)]
             st.session_state.s_list.extend(scene_tmp); st.rerun()
 
+st.subheader("シーン履歴")
+if st.session_state.s_list:
+    h_df = pd.DataFrame(st.session_state.s_list)
+    for (sn, zn), data in h_df.groupby(['sn', 'zn']):
+        with st.expander(f"{sn} ({zn})"):
+            for _, r in data.iterrows():
+                c_info = f" {r['ex']}-{r['ey']}" if r['ex'] != "" else f"{r['kel']}K"
+                st.write(f"・{r['gn']}: {r['dim']}% / {c_info}")
+            if st.button("このシーンのみ削除", key=f"del_s_{sn}_{zn}"):
+                st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == sn and s["zn"] == zn)]; st.rerun()
+
 # 3. シーンタイムテーブル設定
 st.divider()
 st.header("3. シーンタイムテーブル設定")
@@ -108,7 +114,6 @@ with st.container(border=True):
 for i, tl in enumerate(st.session_state.timelines):
     with st.expander(f"{tl['name']} (ゾーン: {tl['zone']}) - {tl['day']}", expanded=True):
         z_scenes = sorted(list(set([s['sn'] for s in st.session_state.s_list if s['zn'] == tl['zone']])))
-        
         with st.container(border=True):
             st.write("一括生成")
             bulk_scenes = st.multiselect("順序", options=z_scenes, key=f"bulk_s_{i}")
@@ -173,20 +178,16 @@ if st.button(".tar を生成", type="primary", use_container_width=True):
         for j, s in enumerate(sort_s):
             col = IDX_TIME_START + j*2
             if col + 1 < IDX_ZONE_TS: rows[i][col], rows[i][col+1] = fmt_t(s['time']), s['scene']
-        
-        # ゾーン割当 (GS=197)
         rows[i][IDX_ZONE_TS] = tl['zone']
         if tl['day'] != "(空白)":
             day_idx = 0 if tl['day'] == "毎日" else DAY_OPTIONS.index(tl['day']) - 1
             rows[i][IDX_ZONE_TS + 1 + day_idx] = tl['name']
 
     for i, p in enumerate(st.session_state.p_list):
-        # 特異日情報をGZ(207)から配置
         rows[i][IDX_PERIOD_NAME], rows[i][IDX_PERIOD_NAME+1], rows[i][IDX_PERIOD_NAME+2], rows[i][IDX_PERIOD_NAME+3], rows[i][IDX_PERIOD_NAME+4] = p["名"], fmt_d(p["sd"]), fmt_d(p["ed"]), p["sn"], p["zn"]
 
     def to_line(arr): return ",".join([str(x) for x in arr]) + "\r\n"
-    
-    # 【見出し位置修正】GS(197)とGZ(207)に配置。それぞれの左隣を空にする。
+    # 見出し位置修正：197(GS)と207(GZ)にラベル。196(GR)と206(GY)は必ず空にする。
     h1 = ["Zone情報","","","","Group情報","","","","","Scene情報","","","","","","","","Timetable情報"] + [""]*(IDX_ZONE_TS-18-1) + ["Timetable-schedule情報"] + [""]*(IDX_PERIOD_NAME-IDX_ZONE_TS-1) + ["Timetable期間/特異日情報"]
     h3 = ['[zone]','[id]','[fade]','','[group]','[id]','[type]','[zone]','','[scene]','[id]','[dimming]','[color]','[perform]','[zone]','[group]','','[zone-timetable]','[id]','[zone]','[sun-start-scene]','[sun-end-scene]']
     for _ in range(87): h3 += ['[time]','[scene]']
