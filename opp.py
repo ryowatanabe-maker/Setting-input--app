@@ -11,9 +11,10 @@ IDX_SCENE_START = 9
 IDX_TT_NAME = 17     # R列
 IDX_TT_ZONE = 19     # T列
 IDX_TIME_START = 22  # W列: スロット開始
-IDX_ZONE_TS = 197    # GS列: [zone-ts]
-# 206(GY列)は空列にする
-IDX_PERIOD_NAME = 207# GZ列: [zone-period]
+# タイムスケジュール情報ブロック
+IDX_ZONE_TS = 196    # GS列 (Index 196): [zone-ts]
+# 特異日情報ブロック
+IDX_PERIOD_NAME = 206# GZ列 (Index 206): [zone-period]
 
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["(空白)", "毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
@@ -30,8 +31,8 @@ if 'timelines' not in st.session_state: st.session_state.timelines = []
 def fmt_t(t): return f"{t.hour}:{t.minute:02}"
 def fmt_d(d): return f"{d.month}月{d.day}日"
 
-# 固有IDによる削除
-def delete_timeline_slot_by_id(tl_idx, slot_uid):
+# 【削除不具合の完全修正】UIDによるピンポイント削除
+def delete_slot_by_uid(tl_idx, slot_uid):
     st.session_state.timelines[tl_idx]['slots'] = [
         s for s in st.session_state.timelines[tl_idx]['slots'] if s['uid'] != slot_uid
     ]
@@ -90,17 +91,6 @@ if sz_in:
             st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == sn_in and s["zn"] == sz_in)]
             st.session_state.s_list.extend(scene_tmp); st.rerun()
 
-st.subheader("シーン履歴")
-if st.session_state.s_list:
-    h_df = pd.DataFrame(st.session_state.s_list)
-    for (sn, zn), data in h_df.groupby(['sn', 'zn']):
-        with st.expander(f"{sn} ({zn})"):
-            for _, r in data.iterrows():
-                c_info = f" {r['ex']}-{r['ey']}" if r['ex'] != "" else f"{r['kel']}K"
-                st.write(f"・{r['gn']}: {r['dim']}% / {c_info}")
-            if st.button("このシーンのみ削除", key=f"del_s_{sn}_{zn}"):
-                st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == sn and s["zn"] == zn)]; st.rerun()
-
 # 3. シーンタイムテーブル設定
 st.divider()
 st.header("3. シーンタイムテーブル設定")
@@ -110,9 +100,9 @@ with st.container(border=True):
     tl_d = st.selectbox("適用曜日", DAY_OPTIONS, index=1)
     if st.button("枠を作成") and tl_n and tl_z:
         st.session_state.timelines.append({
-            "uid": datetime.now().timestamp(),
+            "uid": f"tl_{datetime.now().timestamp()}",
             "name": tl_n, "zone": tl_z, "day": tl_d, 
-            "slots": [{"uid": f"init_{datetime.now().timestamp()}", "time": time(0, 0), "scene": ""}]
+            "slots": [{"uid": f"sl_{datetime.now().timestamp()}", "time": time(0, 0), "scene": ""}]
         }); st.rerun()
 
 for i, tl in enumerate(st.session_state.timelines):
@@ -128,11 +118,10 @@ for i, tl in enumerate(st.session_state.timelines):
             b_it = cc.number_input("間隔(分)", 1, 1440, 10, key=f"b_it_{i}")
             if st.button("一括生成実行", key=f"bulk_btn_{i}") and bulk_scenes:
                 new_slots = []
-                if b_st != time(0, 0): 
-                    new_slots.append({"uid": f"bulk_0_{datetime.now().timestamp()}", "time": time(0, 0), "scene": ""})
+                if b_st != time(0, 0): new_slots.append({"uid": f"b0_{datetime.now().timestamp()}", "time": time(0, 0), "scene": ""})
                 dt, idx = datetime.combine(datetime.today(), b_st), 0
                 while dt <= datetime.combine(datetime.today(), b_en) and len(new_slots) < 85:
-                    new_slots.append({"uid": f"bulk_{idx+1}_{datetime.now().timestamp()}", "time": dt.time(), "scene": bulk_scenes[idx % len(bulk_scenes)]})
+                    new_slots.append({"uid": f"b{idx}_{datetime.now().timestamp()}", "time": dt.time(), "scene": bulk_scenes[idx % len(bulk_scenes)]})
                     dt += timedelta(minutes=b_it); idx += 1
                 st.session_state.timelines[i]['slots'] = new_slots; st.rerun()
 
@@ -141,20 +130,15 @@ for i, tl in enumerate(st.session_state.timelines):
             if j == 0:
                 tl['slots'][0]['time'] = time(0, 0); c1.write("00:00 (起点)")
             else:
-                tl['slots'][j]['time'] = c1.time_input(f"時刻", slot['time'], key=f"t_in_{slot['uid']}")
-            
-            tl['slots'][j]['scene'] = c2.selectbox(f"シーン選択", options=[""]+z_scenes, index=z_scenes.index(slot['scene'])+1 if slot['scene'] in z_scenes else 0, key=f"s_sel_{slot['uid']}")
-            
+                tl['slots'][j]['time'] = c1.time_input(f"時刻", slot['time'], key=f"t_v_{slot['uid']}")
+            tl['slots'][j]['scene'] = c2.selectbox(f"シーン選択", options=[""]+z_scenes, index=z_scenes.index(slot['scene'])+1 if slot['scene'] in z_scenes else 0, key=f"s_v_{slot['uid']}")
             if j > 0:
-                c3.button("削除", key=f"btn_del_{slot['uid']}", on_click=delete_timeline_slot_by_id, args=(i, slot['uid']))
+                c3.button("削除", key=f"del_v_{slot['uid']}", on_click=delete_slot_by_uid, args=(i, slot['uid']))
 
         c_act1, c_act2 = st.columns(2)
-        if c_act1.button("＋ 時刻を追加", key=f"btn_add_{tl['uid']}"):
-            st.session_state.timelines[i]['slots'].append({
-                "uid": f"manual_{datetime.now().timestamp()}", 
-                "time": time(0,0), "scene": ""
-            }); st.rerun()
-        if c_act2.button("この枠を削除", key=f"btn_tl_del_{tl['uid']}"):
+        if c_act1.button("＋ 時刻を追加", key=f"add_v_{tl['uid']}"):
+            st.session_state.timelines[i]['slots'].append({"uid": f"m_{datetime.now().timestamp()}", "time": time(0,0), "scene": ""}); st.rerun()
+        if c_act2.button("この枠を削除", key=f"dtl_v_{tl['uid']}"):
             st.session_state.timelines.pop(i); st.rerun()
 
 # 4. 特異日設定
@@ -199,18 +183,12 @@ if st.button(".tar を生成", type="primary", use_container_width=True):
         rows[i][IDX_PERIOD_NAME], rows[i][IDX_PERIOD_NAME+1], rows[i][IDX_PERIOD_NAME+2], rows[i][IDX_PERIOD_NAME+3], rows[i][IDX_PERIOD_NAME+4] = p["名"], fmt_d(p["sd"]), fmt_d(p["ed"]), p["sn"], p["zn"]
 
     def to_line(arr): return ",".join([str(x) for x in arr]) + "\r\n"
-    # 見出し1行目の修正: IDX_ZONE_TS(197) と IDX_PERIOD_NAME(207) の間を空ける
-    h1 = [""] * TOTAL_COLS
-    h1[0], h1[4], h1[9], h1[17] = "Zone情報", "Group情報", "Scene情報", "Timetable情報"
-    h1[IDX_ZONE_TS] = "Timetable-schedule情報"
-    # 206を飛ばして 207に配置
-    h1[IDX_PERIOD_NAME] = "Timetable期間/特異日情報"
-    
+    # 見出し1行目の修正: GS(196)にスケジュール情報、GZ(206)に特異日情報。それぞれ左隣(195, 205)は空ける。
+    h1 = ["Zone情報","","","","Group情報","","","","","Scene情報","","","","","","","","Timetable情報"] + [""]*(IDX_ZONE_TS-18-1) + ["Timetable-schedule情報"] + [""]*(IDX_PERIOD_NAME-IDX_ZONE_TS-1) + ["Timetable期間/特異日情報"]
     h3 = ['[zone]','[id]','[fade]','','[group]','[id]','[type]','[zone]','','[scene]','[id]','[dimming]','[color]','[perform]','[zone]','[group]','','[zone-timetable]','[id]','[zone]','[sun-start-scene]','[sun-end-scene]']
     for _ in range(87): h3 += ['[time]','[scene]']
     h3 += ['[zone-ts]','[daily]','[monday]','[tuesday]','[wednesday]','[thursday]','[friday]','[saturday]','[sunday]','','[zone-period]','[start]','[end]','[timetable]','[zone]']
-    
-    csv_data = to_line(h1) + ("," * (TOTAL_COLS-1) + "\r\n") + to_line(h3 + [""]*(TOTAL_COLS - len(h3)))
+    csv_data = to_line(h1 + [""]*(TOTAL_COLS - len(h1))) + ("," * (TOTAL_COLS-1) + "\r\n") + to_line(h3 + [""]*(TOTAL_COLS - len(h3)))
     for r in rows: csv_data += to_line(r)
 
     tar_buf = io.BytesIO()
