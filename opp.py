@@ -100,6 +100,7 @@ with st.container(border=True):
     tl_z = st.selectbox("適用ゾーン", options=[""]+vz, key="tlz")
     tl_d = st.selectbox("適用曜日", DAY_OPTIONS, index=1)
     if st.button("枠を作成") and tl_n and tl_z:
+        # 初期状態は空ではなく、最初の入力を促すために0:00を1つ入れておきますが、後で自由に変えられます
         st.session_state.timelines.append({"name": tl_n, "zone": tl_z, "day": tl_d, "slots": [{"time": time(0, 0), "scene": ""}]}); st.rerun()
 
 for i, tl in enumerate(st.session_state.timelines):
@@ -107,31 +108,35 @@ for i, tl in enumerate(st.session_state.timelines):
         z_scenes = sorted(list(set([s['sn'] for s in st.session_state.s_list if s['zn'] == tl['zone']])))
         
         with st.container(border=True):
-            st.write("一括生成 (0:00〜開始)")
+            st.write("一括生成")
             bulk_scenes = st.multiselect("順序", options=z_scenes, key=f"bulk_s_{i}")
             ca, cb, cc = st.columns(3)
-            b_en, b_it = ca.time_input("終了まで", value=time(23,59), key=f"b_en_{i}"), cb.number_input("間隔(分)", 1, 1440, 10, key=f"b_it_{i}")
+            b_st = ca.time_input("開始時刻", value=time(0,0), key=f"b_st_{i}")
+            b_en = cb.time_input("終了まで", value=time(23,59), key=f"b_en_{i}")
+            b_it = cc.number_input("間隔(分)", 1, 1440, 10, key=f"b_it_{i}")
             if st.button("一括生成実行", key=f"bulk_btn_{i}") and bulk_scenes:
-                new_slots, dt, idx = [], datetime.combine(datetime.today(), time(0, 0)), 0
+                new_slots, dt, idx = [], datetime.combine(datetime.today(), b_st), 0
                 while dt <= datetime.combine(datetime.today(), b_en) and len(new_slots) < 85:
                     new_slots.append({"time": dt.time(), "scene": bulk_scenes[idx % len(bulk_scenes)]})
                     dt += timedelta(minutes=b_it); idx += 1
                 tl['slots'] = new_slots; st.rerun()
 
+        # スロットの編集
         for j, slot in enumerate(tl['slots']):
             c1, c2, c3 = st.columns([1, 2, 0.5])
-            if j == 0: c1.write("00:00 (起点)")
-            else: tl['slots'][j]['time'] = c1.time_input(f"時刻", slot['time'], key=f"t_{i}_{j}")
+            # 起点というラベルを外し、すべての時刻を編集可能にします
+            tl['slots'][j]['time'] = c1.time_input(f"時刻", slot['time'], key=f"t_{i}_{j}")
             tl['slots'][j]['scene'] = c2.selectbox(f"シーン", options=[""]+z_scenes, index=z_scenes.index(slot['scene'])+1 if slot['scene'] in z_scenes else 0, key=f"s_{i}_{j}")
-            if j > 0 and c3.button("削除", key=f"ds_{i}_{j}"): tl['slots'].pop(j); st.rerun()
+            if c3.button("削除", key=f"ds_{i}_{j}"): 
+                tl['slots'].pop(j); st.rerun()
         
         c_act1, c_act2 = st.columns(2)
-        if c_act1.button("＋ 時刻を追加", key=f"as_{i}"): tl['slots'].append({"time": time(12,0), "scene": ""}); st.rerun()
+        if c_act1.button("＋ 時刻を追加", key=f"as_{i}"): tl['slots'].append({"time": time(0,0), "scene": ""}); st.rerun()
         if c_act2.button("この枠を削除", key=f"dtl_{i}"): st.session_state.timelines.pop(i); st.rerun()
 
 # 4. 特異日
 st.divider()
-st.subheader("4. 特異日設定")
+st.header("4. 特異日設定")
 with st.form("p_form", clear_on_submit=True):
     pn = st.text_input("名称 [zone-period]")
     exist_tt = sorted(list(set([tl['name'] for tl in st.session_state.timelines])))
@@ -158,7 +163,9 @@ if st.button(".tar を生成", type="primary", use_container_width=True):
     # Timetable (絶対位置指定)
     for i, tl in enumerate(st.session_state.timelines):
         rows[i][17], rows[i][19] = tl['name'], tl['zone'] # R=17, T=19
-        for j, s in enumerate(sorted(tl['slots'], key=lambda x: x['time'])):
+        # 時刻順にソートして出力
+        sort_s = sorted(tl['slots'], key=lambda x: x['time'])
+        for j, s in enumerate(sort_s):
             col = IDX_TIME_START + j*2
             if col + 1 < IDX_ZONE_TS: rows[i][col], rows[i][col+1] = fmt_t(s['time']), s['scene']
         
