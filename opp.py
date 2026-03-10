@@ -11,8 +11,9 @@ IDX_SCENE_START = 9
 IDX_TT_NAME = 17     # R列
 IDX_TT_ZONE = 19     # T列
 IDX_TIME_START = 22  # W列: スロット開始
-IDX_ZONE_TS = 197    # GS列: 絶対位置 [zone-ts] (赤池店実データ準拠)
-IDX_PERIOD_NAME = 207# GZ列: 絶対位置 [zone-period] (赤池店実データ準拠 / GY(206)は空列)
+IDX_ZONE_TS = 197    # GS列: [zone-ts]
+# 206(GY列)は空列にする
+IDX_PERIOD_NAME = 207# GZ列: [zone-period]
 
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["(空白)", "毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
@@ -29,7 +30,7 @@ if 'timelines' not in st.session_state: st.session_state.timelines = []
 def fmt_t(t): return f"{t.hour}:{t.minute:02}"
 def fmt_d(d): return f"{d.month}月{d.day}日"
 
-# 【修正】削除ボタンの処理：インデックスではなく一意のIDで削除
+# 固有IDによる削除
 def delete_timeline_slot_by_id(tl_idx, slot_uid):
     st.session_state.timelines[tl_idx]['slots'] = [
         s for s in st.session_state.timelines[tl_idx]['slots'] if s['uid'] != slot_uid
@@ -108,7 +109,6 @@ with st.container(border=True):
     tl_z = st.selectbox("適用ゾーン", options=[""]+vz, key="tlz")
     tl_d = st.selectbox("適用曜日", DAY_OPTIONS, index=1)
     if st.button("枠を作成") and tl_n and tl_z:
-        # スロット作成時に一意のUIDを付与
         st.session_state.timelines.append({
             "uid": datetime.now().timestamp(),
             "name": tl_n, "zone": tl_z, "day": tl_d, 
@@ -136,7 +136,6 @@ for i, tl in enumerate(st.session_state.timelines):
                     dt += timedelta(minutes=b_it); idx += 1
                 st.session_state.timelines[i]['slots'] = new_slots; st.rerun()
 
-        # スロットの編集
         for j, slot in enumerate(tl['slots']):
             c1, c2, c3 = st.columns([1, 2, 0.5])
             if j == 0:
@@ -147,7 +146,6 @@ for i, tl in enumerate(st.session_state.timelines):
             tl['slots'][j]['scene'] = c2.selectbox(f"シーン選択", options=[""]+z_scenes, index=z_scenes.index(slot['scene'])+1 if slot['scene'] in z_scenes else 0, key=f"s_sel_{slot['uid']}")
             
             if j > 0:
-                # 【重要】スロット固有のIDをargsに渡してコールバックを実行。これにより正確にその行が削除される。
                 c3.button("削除", key=f"btn_del_{slot['uid']}", on_click=delete_timeline_slot_by_id, args=(i, slot['uid']))
 
         c_act1, c_act2 = st.columns(2)
@@ -201,12 +199,18 @@ if st.button(".tar を生成", type="primary", use_container_width=True):
         rows[i][IDX_PERIOD_NAME], rows[i][IDX_PERIOD_NAME+1], rows[i][IDX_PERIOD_NAME+2], rows[i][IDX_PERIOD_NAME+3], rows[i][IDX_PERIOD_NAME+4] = p["名"], fmt_d(p["sd"]), fmt_d(p["ed"]), p["sn"], p["zn"]
 
     def to_line(arr): return ",".join([str(x) for x in arr]) + "\r\n"
-    h1 = ["Zone情報","","","","Group情報","","","","","Scene情報","","","","","","","","Timetable情報"] + [""]*(IDX_ZONE_TS-18) + ["Timetable-schedule情報"] + [""]*(IDX_PERIOD_NAME-IDX_ZONE_TS-1) + ["Timetable期間/特異日情報"]
+    # 見出し1行目の修正: IDX_ZONE_TS(197) と IDX_PERIOD_NAME(207) の間を空ける
+    h1 = [""] * TOTAL_COLS
+    h1[0], h1[4], h1[9], h1[17] = "Zone情報", "Group情報", "Scene情報", "Timetable情報"
+    h1[IDX_ZONE_TS] = "Timetable-schedule情報"
+    # 206を飛ばして 207に配置
+    h1[IDX_PERIOD_NAME] = "Timetable期間/特異日情報"
+    
     h3 = ['[zone]','[id]','[fade]','','[group]','[id]','[type]','[zone]','','[scene]','[id]','[dimming]','[color]','[perform]','[zone]','[group]','','[zone-timetable]','[id]','[zone]','[sun-start-scene]','[sun-end-scene]']
     for _ in range(87): h3 += ['[time]','[scene]']
     h3 += ['[zone-ts]','[daily]','[monday]','[tuesday]','[wednesday]','[thursday]','[friday]','[saturday]','[sunday]','','[zone-period]','[start]','[end]','[timetable]','[zone]']
     
-    csv_data = to_line(h1 + [""]*(TOTAL_COLS - len(h1))) + ("," * (TOTAL_COLS-1) + "\r\n") + to_line(h3 + [""]*(TOTAL_COLS - len(h3)))
+    csv_data = to_line(h1) + ("," * (TOTAL_COLS-1) + "\r\n") + to_line(h3 + [""]*(TOTAL_COLS - len(h3)))
     for r in rows: csv_data += to_line(r)
 
     tar_buf = io.BytesIO()
