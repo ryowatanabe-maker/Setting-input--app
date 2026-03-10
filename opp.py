@@ -29,10 +29,6 @@ if 'timelines' not in st.session_state: st.session_state.timelines = []
 def fmt_t(t): return f"{t.hour}:{t.minute:02}"
 def fmt_d(d): return f"{d.month}月{d.day}日"
 
-# 削除用コールバック関数
-def remove_timeline_slot(tl_idx, slot_idx):
-    st.session_state.timelines[tl_idx]['slots'].pop(slot_idx)
-
 st.title("FitPlus 設定ツール")
 shop_name = st.text_input("店舗名を入力", "FitPlus_Project")
 
@@ -129,6 +125,7 @@ for i, tl in enumerate(st.session_state.timelines):
                     dt += timedelta(minutes=b_it); idx += 1
                 st.session_state.timelines[i]['slots'] = new_slots; st.rerun()
 
+        # スロットの編集
         for j, slot in enumerate(tl['slots']):
             c1, c2, c3 = st.columns([1, 2, 0.5])
             if j == 0:
@@ -137,15 +134,21 @@ for i, tl in enumerate(st.session_state.timelines):
             else:
                 tl['slots'][j]['time'] = c1.time_input(f"時刻", slot['time'], key=f"t_{i}_{j}")
             
-            tl['slots'][j]['scene'] = c2.selectbox(f"シーン", options=[""]+z_scenes, index=z_scenes.index(slot['scene'])+1 if slot['scene'] in z_scenes else 0, key=f"s_{i}_{j}")
+            tl['slots'][j]['scene'] = c2.selectbox(f"シーン選択", options=[""]+z_scenes, index=z_scenes.index(slot['scene'])+1 if slot['scene'] in z_scenes else 0, key=f"s_{i}_{j}")
             
+            # 確実に削除するための修正
             if j > 0:
-                # 確実に削除するために安定したユニークキーでコールバックを実行
-                c3.button("削除", key=f"ds_{i}_{j}_{len(tl['slots'])}", on_click=remove_timeline_slot, args=(i, j))
+                if c3.button("削除", key=f"ds_{i}_{j}"):
+                    st.session_state.timelines[i]['slots'].pop(j)
+                    st.rerun()
         
         c_act1, c_act2 = st.columns(2)
-        if c_act1.button("＋ 時刻を追加", key=f"as_{i}"): tl['slots'].append({"time": time(0,0), "scene": ""}); st.rerun()
-        if c_act2.button("この枠を削除", key=f"dtl_{i}"): st.session_state.timelines.pop(i); st.rerun()
+        if c_act1.button("＋ 時刻を追加", key=f"as_{i}"):
+            st.session_state.timelines[i]['slots'].append({"time": time(0,0), "scene": ""})
+            st.rerun()
+        if c_act2.button("この枠を削除", key=f"dtl_{i}"):
+            st.session_state.timelines.pop(i)
+            st.rerun()
 
 # 4. 特異日設定
 st.divider()
