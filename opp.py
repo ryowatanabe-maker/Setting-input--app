@@ -12,8 +12,6 @@ IDX_TT_NAME = 17     # R列
 IDX_TT_ZONE = 19     # T列
 IDX_TIME_START = 22  # W列: スロット開始
 IDX_ZONE_TS = 196    # GS列: 絶対位置 [zone-ts]
-# 特異日ブロックの修正
-# GY(206)は空列、GZ(207)から特異日情報
 IDX_PERIOD_NAME = 207# GZ列: 絶対位置 [zone-period]
 
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
@@ -21,6 +19,7 @@ DAY_OPTIONS = ["(空白)", "毎日", "月曜日", "火曜日", "水曜日", "木
 
 st.set_page_config(page_title="FitPlus Setting Tool", layout="wide")
 
+# セッション管理
 if 'z_list' not in st.session_state: st.session_state.z_list = []
 if 'g_list' not in st.session_state: st.session_state.g_list = []
 if 's_list' not in st.session_state: st.session_state.s_list = []
@@ -29,6 +28,10 @@ if 'timelines' not in st.session_state: st.session_state.timelines = []
 
 def fmt_t(t): return f"{t.hour}:{t.minute:02}"
 def fmt_d(d): return f"{d.month}月{d.day}日"
+
+# 削除用コールバック関数
+def remove_timeline_slot(tl_idx, slot_idx):
+    st.session_state.timelines[tl_idx]['slots'].pop(slot_idx)
 
 st.title("FitPlus 設定ツール")
 shop_name = st.text_input("店舗名を入力", "FitPlus_Project")
@@ -118,7 +121,6 @@ for i, tl in enumerate(st.session_state.timelines):
             b_it = cc.number_input("間隔(分)", 1, 1440, 10, key=f"b_it_{i}")
             if st.button("一括生成実行", key=f"bulk_btn_{i}") and bulk_scenes:
                 new_slots = []
-                # 最初は必ず0:00にするロジック
                 if b_st != time(0, 0):
                     new_slots.append({"time": time(0, 0), "scene": ""})
                 dt, idx = datetime.combine(datetime.today(), b_st), 0
@@ -134,10 +136,12 @@ for i, tl in enumerate(st.session_state.timelines):
                 c1.write("00:00 (起点)")
             else:
                 tl['slots'][j]['time'] = c1.time_input(f"時刻", slot['time'], key=f"t_{i}_{j}")
+            
             tl['slots'][j]['scene'] = c2.selectbox(f"シーン", options=[""]+z_scenes, index=z_scenes.index(slot['scene'])+1 if slot['scene'] in z_scenes else 0, key=f"s_{i}_{j}")
+            
             if j > 0:
-                if c3.button("削除", key=f"ds_{i}_{j}"):
-                    st.session_state.timelines[i]['slots'].pop(j); st.rerun()
+                # 確実に削除するために安定したユニークキーでコールバックを実行
+                c3.button("削除", key=f"ds_{i}_{j}_{len(tl['slots'])}", on_click=remove_timeline_slot, args=(i, j))
         
         c_act1, c_act2 = st.columns(2)
         if c_act1.button("＋ 時刻を追加", key=f"as_{i}"): tl['slots'].append({"time": time(0,0), "scene": ""}); st.rerun()
@@ -182,11 +186,9 @@ if st.button(".tar を生成", type="primary", use_container_width=True):
             rows[i][IDX_ZONE_TS + 1 + day_idx] = tl['name']
 
     for i, p in enumerate(st.session_state.p_list):
-        # 特異日情報をIDX_PERIOD_NAME (207) から正確に配置
         rows[i][IDX_PERIOD_NAME], rows[i][IDX_PERIOD_NAME+1], rows[i][IDX_PERIOD_NAME+2], rows[i][IDX_PERIOD_NAME+3], rows[i][IDX_PERIOD_NAME+4] = p["名"], fmt_d(p["sd"]), fmt_d(p["ed"]), p["sn"], p["zn"]
 
     def to_line(arr): return ",".join([str(x) for x in arr]) + "\r\n"
-    # ヘッダー位置の厳密な調整
     h1 = ["Zone情報","","","","Group情報","","","","","Scene情報","","","","","","","","Timetable情報"] + [""]*(IDX_ZONE_TS-18) + ["Timetable-schedule情報"] + [""]*(IDX_PERIOD_NAME-IDX_ZONE_TS-10) + ["Timetable期間/特異日情報"]
     h3 = ['[zone]','[id]','[fade]','','[group]','[id]','[type]','[zone]','','[scene]','[id]','[dimming]','[color]','[perform]','[zone]','[group]','','[zone-timetable]','[id]','[zone]','[sun-start-scene]','[sun-end-scene]']
     for _ in range(87): h3 += ['[time]','[scene]']
