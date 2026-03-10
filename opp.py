@@ -29,10 +29,6 @@ if 'timelines' not in st.session_state: st.session_state.timelines = []
 def fmt_t(t): return f"{t.hour}:{t.minute:02}"
 def fmt_d(d): return f"{d.month}月{d.day}日"
 
-# 削除用コールバック関数
-def delete_slot(t_idx, s_idx):
-    st.session_state.timelines[t_idx]['slots'].pop(s_idx)
-
 st.title("FitPlus 設定ツール")
 shop_name = st.text_input("店舗名を入力", "FitPlus_Project")
 
@@ -60,9 +56,11 @@ with c1:
 with c2:
     st.write("登録履歴")
     for i, z in enumerate(st.session_state.z_list):
-        cl1, cl2 = st.columns([4, 1]); cl1.info(f"ゾーン: {z['名']}"); (cl2.button("削除", key=f"dz_{i}") and [st.session_state.z_list.pop(i), st.rerun()])
+        cl1, cl2 = st.columns([4, 1]); cl1.info(f"ゾーン: {z['名']}"); 
+        if cl2.button("削除", key=f"dz_{i}"): st.session_state.z_list.pop(i); st.rerun()
     for i, g in enumerate(st.session_state.g_list):
-        cl1, cl2 = st.columns([4, 1]); cl1.success(f"グループ: {g['名']} ({g['ゾ']})"); (cl2.button("削除", key=f"dg_{i}") and [st.session_state.g_list.pop(i), st.rerun()])
+        cl1, cl2 = st.columns([4, 1]); cl1.success(f"グループ: {g['名']} ({g['ゾ']})"); 
+        if cl2.button("削除", key=f"dg_{i}"): st.session_state.g_list.pop(i); st.rerun()
 
 # 2. シーン作成
 st.divider()
@@ -129,14 +127,16 @@ for i, tl in enumerate(st.session_state.timelines):
             c1, c2, c3 = st.columns([1, 2, 0.5])
             tl['slots'][j]['time'] = c1.time_input(f"時刻", slot['time'], key=f"t_{i}_{j}")
             tl['slots'][j]['scene'] = c2.selectbox(f"シーン", options=[""]+z_scenes, index=z_scenes.index(slot['scene'])+1 if slot['scene'] in z_scenes else 0, key=f"s_{i}_{j}")
-            # 削除ボタンを確実に動作させるために on_click を使用
-            c3.button("削除", key=f"ds_{i}_{j}", on_click=delete_slot, args=(i, j))
+            # 修正：削除ボタンを他の箇所と同じ安定した方式に変更
+            if c3.button("削除", key=f"ds_{i}_{j}"):
+                st.session_state.timelines[i]['slots'].pop(j)
+                st.rerun()
         
         c_act1, c_act2 = st.columns(2)
         if c_act1.button("＋ 時刻を追加", key=f"as_{i}"): tl['slots'].append({"time": time(0,0), "scene": ""}); st.rerun()
         if c_act2.button("この枠を削除", key=f"dtl_{i}"): st.session_state.timelines.pop(i); st.rerun()
 
-# 4. 特異日
+# 4. 特異日設定
 st.divider()
 st.header("4. 特異日設定")
 with st.form("p_form", clear_on_submit=True):
@@ -149,20 +149,19 @@ with st.form("p_form", clear_on_submit=True):
         st.session_state.p_list.append({"名": pn, "sd": psd, "ed": ped, "sn": ps_name, "zn": tz}); st.rerun()
 
 for i, p in enumerate(st.session_state.p_list):
-    c1, c2 = st.columns([4, 1]); c1.write(f"日付: {p['名']} ({p['sd']}~{p['ed']}) -> {p['sn']}"); (c2.button("削除", key=f"dp_{i}") and [st.session_state.p_list.pop(i), st.rerun()])
+    c1, c2 = st.columns([4, 1]); c1.write(f"日付: {p['名']} ({p['sd']}~{p['ed']}) -> {p['sn']}"); 
+    if c2.button("削除", key=f"dp_{i}"): st.session_state.p_list.pop(i); st.rerun()
 
 # 5. 出力
 st.divider()
 if st.button(".tar を生成", type="primary", use_container_width=True):
     rows = [[""] * TOTAL_COLS for _ in range(500)]
-    # Zone/Group/Scene
     for i, z in enumerate(st.session_state.z_list): rows[i][0], rows[i][2] = z["名"], z["秒"]
     for i, g in enumerate(st.session_state.g_list): rows[i][4], rows[i][6], rows[i][7] = g["名"], GROUP_TYPES[g["型"]], g["ゾ"]
     for i, r in enumerate(st.session_state.s_list):
         p_v, c_v = (f" {r['ex']}-{r['ey']}", "") if r['ex'] != "" else ("", r['kel'])
         rows[i][9], rows[i][11], rows[i][12], rows[i][13], rows[i][14], rows[i][15] = r["sn"], r["dim"], c_v, p_v, r["zn"], r["gn"]
     
-    # Timetable (絶対位置指定)
     for i, tl in enumerate(st.session_state.timelines):
         rows[i][17], rows[i][19] = tl['name'], tl['zone'] # R=17, T=19
         sort_s = sorted(tl['slots'], key=lambda x: x['time'])
@@ -170,15 +169,13 @@ if st.button(".tar を生成", type="primary", use_container_width=True):
             col = IDX_TIME_START + j*2
             if col + 1 < IDX_ZONE_TS: rows[i][col], rows[i][col+1] = fmt_t(s['time']), s['scene']
         
-        # ゾーン割当 (GS列=196)
         rows[i][IDX_ZONE_TS] = tl['zone']
         if tl['day'] != "(空白)":
             day_idx = 0 if tl['day'] == "毎日" else DAY_OPTIONS.index(tl['day']) - 1
             rows[i][IDX_ZONE_TS + 1 + day_idx] = tl['name']
 
-    # 特異日 (IC列=206)
     for i, p in enumerate(st.session_state.p_list):
-        rows[i][IDX_PERIOD_NAME], rows[i][IDX_PERIOD_START], rows[i][IDX_PERIOD_END], rows[i][IDX_PERIOD_TT], rows[i][IDX_PERIOD_ZONE] = p["名"], fmt_d(p["sd"]), fmt_d(p["ed"]), p["sn"], p["zn"]
+        rows[i][IDX_PERIOD_NAME], rows[i][IDX_PERIOD_NAME+1], rows[i][IDX_PERIOD_NAME+2], rows[i][IDX_PERIOD_NAME+3], rows[i][IDX_PERIOD_NAME+4] = p["名"], fmt_d(p["sd"]), fmt_d(p["ed"]), p["sn"], p["zn"]
 
     def to_line(arr): return ",".join([str(x) for x in arr]) + "\r\n"
     h1 = ["Zone情報","","","","Group情報","","","","","Scene情報","","","","","","","","Timetable情報"] + [""]*(IDX_ZONE_TS-18) + ["Timetable-schedule情報"] + [""]*(IDX_PERIOD_NAME-IDX_ZONE_TS-10) + ["Timetable期間/特異日情報"]
@@ -192,7 +189,7 @@ if st.button(".tar を生成", type="primary", use_container_width=True):
     tar_buf = io.BytesIO()
     with tarfile.open(fileobj=tar_buf, mode="w", format=tarfile.USTAR_FORMAT) as tar:
         b = csv_data.encode("utf-8-sig")
-        ti = tarfile.TarInfo(name="setting_data.csv"); ti.size = len(b); tar.addfile(ti, io.BytesIO(b))
+        ti = tarfile.TarInfo("setting_data.csv"); ti.size = len(b); tar.addfile(ti, io.BytesIO(b))
         jb = json.dumps({"pair": [], "csv": "setting_data.csv"}).encode('utf-8')
         tj = tarfile.TarInfo("temp.json"); tj.size = len(jb); tar.addfile(tj, io.BytesIO(jb))
     st.download_button(f"{shop_name}.tar を保存", tar_buf.getvalue(), f"{shop_name}.tar")
