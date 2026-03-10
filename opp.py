@@ -120,14 +120,15 @@ for i, tl in enumerate(st.session_state.timelines):
                 while dt <= datetime.combine(datetime.today(), b_en) and len(new_slots) < 85:
                     new_slots.append({"time": dt.time(), "scene": bulk_scenes[idx % len(bulk_scenes)]})
                     dt += timedelta(minutes=b_it); idx += 1
-                tl['slots'] = new_slots; st.rerun()
+                # 既存のスロットをクリアして一括生成分で上書き
+                st.session_state.timelines[i]['slots'] = new_slots; st.rerun()
 
         # スロットの編集
         for j, slot in enumerate(tl['slots']):
             c1, c2, c3 = st.columns([1, 2, 0.5])
             tl['slots'][j]['time'] = c1.time_input(f"時刻", slot['time'], key=f"t_{i}_{j}")
             tl['slots'][j]['scene'] = c2.selectbox(f"シーン", options=[""]+z_scenes, index=z_scenes.index(slot['scene'])+1 if slot['scene'] in z_scenes else 0, key=f"s_{i}_{j}")
-            # 修正：削除ボタンを他の箇所と同じ安定した方式に変更
+            # 全ての行に削除ボタンを表示するように修正
             if c3.button("削除", key=f"ds_{i}_{j}"):
                 st.session_state.timelines[i]['slots'].pop(j)
                 st.rerun()
@@ -163,7 +164,7 @@ if st.button(".tar を生成", type="primary", use_container_width=True):
         rows[i][9], rows[i][11], rows[i][12], rows[i][13], rows[i][14], rows[i][15] = r["sn"], r["dim"], c_v, p_v, r["zn"], r["gn"]
     
     for i, tl in enumerate(st.session_state.timelines):
-        rows[i][17], rows[i][19] = tl['name'], tl['zone'] # R=17, T=19
+        rows[i][17], rows[i][19] = tl['name'], tl['zone']
         sort_s = sorted(tl['slots'], key=lambda x: x['time'])
         for j, s in enumerate(sort_s):
             col = IDX_TIME_START + j*2
