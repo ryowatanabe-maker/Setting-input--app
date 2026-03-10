@@ -11,8 +11,8 @@ IDX_SCENE_START = 9
 IDX_TT_NAME = 17     # R列
 IDX_TT_ZONE = 19     # T列
 IDX_TIME_START = 22  # W列: スロット開始
-IDX_ZONE_TS = 196    # GS列: 絶対位置 [zone-ts]
-IDX_PERIOD_NAME = 207# GZ列: 絶対位置 [zone-period]
+IDX_ZONE_TS = 197    # GT列: 絶対位置 [zone-ts] (赤池店実データ準拠)
+IDX_PERIOD_NAME = 207# HD列: 絶対位置 [zone-period] (赤池店実データ準拠 / HC(206)は空列)
 
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["(空白)", "毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
@@ -28,6 +28,10 @@ if 'timelines' not in st.session_state: st.session_state.timelines = []
 
 def fmt_t(t): return f"{t.hour}:{t.minute:02}"
 def fmt_d(d): return f"{d.month}月{d.day}日"
+
+# タイムテーブルのスロット削除専用コールバック (確実な動作のため)
+def handle_delete_slot(tl_idx, slot_idx):
+    st.session_state.timelines[tl_idx]['slots'].pop(slot_idx)
 
 st.title("FitPlus 設定ツール")
 shop_name = st.text_input("店舗名を入力", "FitPlus_Project")
@@ -136,19 +140,17 @@ for i, tl in enumerate(st.session_state.timelines):
             
             tl['slots'][j]['scene'] = c2.selectbox(f"シーン選択", options=[""]+z_scenes, index=z_scenes.index(slot['scene'])+1 if slot['scene'] in z_scenes else 0, key=f"s_{i}_{j}")
             
-            # 確実に削除するための修正
+            # 確実に削除するための修正: on_clickを使用し、ユニークなキーを生成
             if j > 0:
-                if c3.button("削除", key=f"ds_{i}_{j}"):
-                    st.session_state.timelines[i]['slots'].pop(j)
-                    st.rerun()
-        
+                if c3.button("削除", key=f"ds_{i}_{j}_{len(tl['slots'])}", on_click=handle_delete_slot, args=(i, j)):
+                    pass
+
         c_act1, c_act2 = st.columns(2)
         if c_act1.button("＋ 時刻を追加", key=f"as_{i}"):
             st.session_state.timelines[i]['slots'].append({"time": time(0,0), "scene": ""})
             st.rerun()
         if c_act2.button("この枠を削除", key=f"dtl_{i}"):
-            st.session_state.timelines.pop(i)
-            st.rerun()
+            st.session_state.timelines.pop(i); st.rerun()
 
 # 4. 特異日設定
 st.divider()
@@ -183,15 +185,18 @@ if st.button(".tar を生成", type="primary", use_container_width=True):
             col = IDX_TIME_START + j*2
             if col + 1 < IDX_ZONE_TS: rows[i][col], rows[i][col+1] = fmt_t(s['time']), s['scene']
         
+        # ゾーン割当 (GT=197)
         rows[i][IDX_ZONE_TS] = tl['zone']
         if tl['day'] != "(空白)":
             day_idx = 0 if tl['day'] == "毎日" else DAY_OPTIONS.index(tl['day']) - 1
             rows[i][IDX_ZONE_TS + 1 + day_idx] = tl['name']
 
     for i, p in enumerate(st.session_state.p_list):
+        # 特異日情報をIDX_PERIOD_NAME (207) から配置 (HC=206は空列)
         rows[i][IDX_PERIOD_NAME], rows[i][IDX_PERIOD_NAME+1], rows[i][IDX_PERIOD_NAME+2], rows[i][IDX_PERIOD_NAME+3], rows[i][IDX_PERIOD_NAME+4] = p["名"], fmt_d(p["sd"]), fmt_d(p["ed"]), p["sn"], p["zn"]
 
     def to_line(arr): return ",".join([str(x) for x in arr]) + "\r\n"
+    # ヘッダー位置の厳密な調整 (赤池店準拠)
     h1 = ["Zone情報","","","","Group情報","","","","","Scene情報","","","","","","","","Timetable情報"] + [""]*(IDX_ZONE_TS-18) + ["Timetable-schedule情報"] + [""]*(IDX_PERIOD_NAME-IDX_ZONE_TS-10) + ["Timetable期間/特異日情報"]
     h3 = ['[zone]','[id]','[fade]','','[group]','[id]','[type]','[zone]','','[scene]','[id]','[dimming]','[color]','[perform]','[zone]','[group]','','[zone-timetable]','[id]','[zone]','[sun-start-scene]','[sun-end-scene]']
     for _ in range(87): h3 += ['[time]','[scene]']
