@@ -11,10 +11,10 @@ IDX_SCENE_START = 9
 IDX_TT_NAME = 17     # R列
 IDX_TT_ZONE = 19     # T列
 IDX_TIME_START = 22  # W列: スロット開始
-# タイムスケジュール情報ブロック
-IDX_ZONE_TS = 196    # GS列 (Index 196): [zone-ts]
-# 特異日情報ブロック
-IDX_PERIOD_NAME = 206# GZ列 (Index 206): [zone-period]
+
+# 赤池店実データ解析に基づく正確なインデックス
+IDX_ZONE_TS = 197    # GS列 (Index 197): [zone-ts]
+IDX_PERIOD_NAME = 207# GZ列 (Index 207): [zone-period]
 
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["(空白)", "毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
@@ -31,7 +31,7 @@ if 'timelines' not in st.session_state: st.session_state.timelines = []
 def fmt_t(t): return f"{t.hour}:{t.minute:02}"
 def fmt_d(d): return f"{d.month}月{d.day}日"
 
-# 【削除不具合の完全修正】UIDによるピンポイント削除
+# 削除用コールバック (UID特定方式)
 def delete_slot_by_uid(tl_idx, slot_uid):
     st.session_state.timelines[tl_idx]['slots'] = [
         s for s in st.session_state.timelines[tl_idx]['slots'] if s['uid'] != slot_uid
@@ -174,16 +174,19 @@ if st.button(".tar を生成", type="primary", use_container_width=True):
             col = IDX_TIME_START + j*2
             if col + 1 < IDX_ZONE_TS: rows[i][col], rows[i][col+1] = fmt_t(s['time']), s['scene']
         
+        # ゾーン割当 (GS=197)
         rows[i][IDX_ZONE_TS] = tl['zone']
         if tl['day'] != "(空白)":
             day_idx = 0 if tl['day'] == "毎日" else DAY_OPTIONS.index(tl['day']) - 1
             rows[i][IDX_ZONE_TS + 1 + day_idx] = tl['name']
 
     for i, p in enumerate(st.session_state.p_list):
+        # 特異日情報をGZ(207)から配置
         rows[i][IDX_PERIOD_NAME], rows[i][IDX_PERIOD_NAME+1], rows[i][IDX_PERIOD_NAME+2], rows[i][IDX_PERIOD_NAME+3], rows[i][IDX_PERIOD_NAME+4] = p["名"], fmt_d(p["sd"]), fmt_d(p["ed"]), p["sn"], p["zn"]
 
     def to_line(arr): return ",".join([str(x) for x in arr]) + "\r\n"
-    # 見出し1行目の修正: GS(196)にスケジュール情報、GZ(206)に特異日情報。それぞれ左隣(195, 205)は空ける。
+    
+    # 【見出し位置修正】GS(197)とGZ(207)に配置。それぞれの左隣を空にする。
     h1 = ["Zone情報","","","","Group情報","","","","","Scene情報","","","","","","","","Timetable情報"] + [""]*(IDX_ZONE_TS-18-1) + ["Timetable-schedule情報"] + [""]*(IDX_PERIOD_NAME-IDX_ZONE_TS-1) + ["Timetable期間/特異日情報"]
     h3 = ['[zone]','[id]','[fade]','','[group]','[id]','[type]','[zone]','','[scene]','[id]','[dimming]','[color]','[perform]','[zone]','[group]','','[zone-timetable]','[id]','[zone]','[sun-start-scene]','[sun-end-scene]']
     for _ in range(87): h3 += ['[time]','[scene]']
