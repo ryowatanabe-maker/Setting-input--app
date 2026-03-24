@@ -39,11 +39,77 @@ def delete_slot_by_uid(tl_idx, slot_uid):
         s for s in st.session_state.timelines[tl_idx]['slots'] if s['uid'] != slot_uid
     ]
 
+# --- 途中セーブ・ロード機能 ---
+def export_session_to_json():
+    export_data = {
+        "z_list": st.session_state.z_list,
+        "g_list": st.session_state.g_list,
+        "s_list": st.session_state.s_list,
+        "p_list": [],
+        "timelines": []
+    }
+    for p in st.session_state.p_list:
+        export_data["p_list"].append({
+            "名": p["名"], "sd": p["sd"].isoformat(), "ed": p["ed"].isoformat(), "sn": p["sn"], "zn": p["zn"]
+        })
+    for tl in st.session_state.timelines:
+        tl_copy = tl.copy()
+        tl_copy["slots"] = [{"uid": s.get("uid", ""), "time": s["time"].strftime("%H:%M"), "scene": s["scene"]} for s in tl["slots"]]
+        export_data["timelines"].append(tl_copy)
+    return json.dumps(export_data, ensure_ascii=False)
+
+def import_session_from_json(json_str):
+    data = json.loads(json_str)
+    st.session_state.z_list = data.get("z_list", [])
+    st.session_state.g_list = data.get("g_list", [])
+    st.session_state.s_list = data.get("s_list", [])
+    
+    p_list = []
+    for p in data.get("p_list", []):
+        p["sd"] = datetime.fromisoformat(p["sd"]).date()
+        p["ed"] = datetime.fromisoformat(p["ed"]).date()
+        p_list.append(p)
+    st.session_state.p_list = p_list
+    
+    timelines = []
+    for tl in data.get("timelines", []):
+        for s in tl["slots"]:
+            s["time"] = datetime.strptime(s["time"], "%H:%M").time()
+        timelines.append(tl)
+    st.session_state.timelines = timelines
+
+# サイドバー設定 (セーブ・ロード・リセット)
+with st.sidebar:
+    st.header("セーブ / ロード")
+    st.write("途中から再開するための専用ファイル(.json)を保存・読み込みします。")
+    
+    # セーブ
+    save_data = export_session_to_json()
+    st.download_button(
+        label="セーブデータをダウンロード",
+        data=save_data,
+        file_name=f"fitplus_save_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
+        mime="application/json",
+        type="primary"
+    )
+    
+    st.divider()
+    
+    # ロード
+    uploaded_file = st.file_uploader("セーブデータを読み込む", type=["json"])
+    if uploaded_file is not None:
+        if st.button("データを復元する"):
+            import_session_from_json(uploaded_file.getvalue().decode("utf-8"))
+            st.success("データを復元しました！")
+            st.rerun()
+            
+    st.divider()
+    if st.button("全データを完全にリセット"):
+        st.session_state.clear()
+        st.rerun()
+
 st.title("FitPlus 設定ツール")
 shop_name = st.text_input("店舗名を入力", "FitPlus_Project")
-
-if st.sidebar.button("全データを完全にリセット"):
-    st.session_state.clear(); st.rerun()
 
 # 1. ゾーン & グループ
 st.header("1. ゾーン & グループ登録")
@@ -63,7 +129,6 @@ with c1:
             st.session_state.g_list.append({"名": gn, "型": gt, "ゾ": gz}); st.rerun()
 with c2:
     st.write("登録履歴")
-    # 【修正】フェード時間の表示追加と、謎のFalseが出ないようにif文を修正
     for i, z in enumerate(st.session_state.z_list):
         cl1, cl2 = st.columns([4, 1])
         cl1.info(f"ゾーン: {z['名']} (フェード: {z['秒']}秒)")
@@ -119,8 +184,9 @@ with st.container(border=True):
     tl_d = st.selectbox("適用曜日", DAY_OPTIONS, index=1)
     if st.button("枠を作成") and tl_n and tl_z:
         st.session_state.timelines.append({
+            "uid": f"tl_{datetime.now().timestamp()}",
             "name": tl_n, "zone": tl_z, "day": tl_d, 
-            "slots": [{"time": time(0, 0), "scene": ""}]
+            "slots": [{"uid": f"sl_{datetime.now().timestamp()}", "time": time(0, 0), "scene": ""}]
         }); st.rerun()
 
 for i, tl in enumerate(st.session_state.timelines):
@@ -135,14 +201,14 @@ for i, tl in enumerate(st.session_state.timelines):
             b_it = cc.number_input("間隔(分)", 1, 1440, 10, key=f"b_it_{i}")
             if st.button("一括生成実行", key=f"bulk_btn_{i}") and bulk_scenes:
                 new_slots = []
-                if b_st != time(0, 0): new_slots.append({"time": time(0, 0), "scene": ""})
+                if b_st != time(0, 0): new_slots.append({"uid": f"b0_{datetime.now().timestamp()}", "time": time(0, 0), "scene": ""})
                 dt, idx = datetime.combine(datetime.today(), b_st), 0
                 while dt <= datetime.combine(datetime.today(), b_en) and len(new_slots) < MAX_SLOTS:
-                    new_slots.append({"time": dt.time(), "scene": bulk_scenes[idx % len(bulk_scenes)]})
+                    new_slots.append({"uid": f"b{idx}_{datetime.now().timestamp()}", "time": dt.time(), "scene": bulk_scenes[idx % len(bulk_scenes)]})
                     dt += timedelta(minutes=b_it); idx += 1
                 st.session_state.timelines[i]['slots'] = new_slots; st.rerun()
 
-        st.write("✏️ **タイムテーブル詳細** (エクセル感覚で直接編集・追加・削除ができます)")
+        st.write("**タイムテーブル詳細** (エクセル感覚で直接編集・追加・削除ができます)")
         
         df_slots = pd.DataFrame(tl['slots'])
         if df_slots.empty:
@@ -166,7 +232,7 @@ for i, tl in enumerate(st.session_state.timelines):
             new_slots_list = [{"time": time(0, 0), "scene": ""}]
         st.session_state.timelines[i]['slots'] = new_slots_list
 
-        if st.button("🗑️ この枠を削除", key=f"dtl_v_{i}"):
+        if st.button("この枠を削除", key=f"dtl_v_{i}"):
             st.session_state.timelines.pop(i); st.rerun()
 
 # 4. 特異日設定
