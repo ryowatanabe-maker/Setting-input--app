@@ -84,7 +84,6 @@ with st.sidebar:
     st.header("セーブ / ロード")
     st.write("途中から再開するための専用ファイル(.json)を保存・読み込みします。")
     
-    # セーブ
     save_data = export_session_to_json()
     st.download_button(
         label="セーブデータをダウンロード",
@@ -96,7 +95,6 @@ with st.sidebar:
     
     st.divider()
     
-    # ロード
     uploaded_file = st.file_uploader("セーブデータを読み込む", type=["json"])
     if uploaded_file is not None:
         if st.button("データを復元する"):
@@ -110,7 +108,6 @@ with st.sidebar:
         st.rerun()
 
 st.title("FitPlus 設定ツール")
-# 【修正】デフォルトの文字をなくし、最初から空白になるようにしました
 shop_name = st.text_input("店舗名を入力", "")
 
 # 1. ゾーン & グループ
@@ -119,36 +116,52 @@ vz = [z["名"] for z in st.session_state.z_list]
 c1, c2 = st.columns(2)
 with c1:
     with st.container(border=True):
-        zn, zf = st.text_input("ゾーン名"), st.number_input("フェード(秒)", 0, 3600, 0)
+        # ゾーン文字数制限(32)追加
+        zn, zf = st.text_input("ゾーン名", max_chars=32), st.number_input("フェード(秒)", 0, 3600, 0)
         if st.button("ゾーン保存") and zn:
-            st.session_state.z_list = [z for z in st.session_state.z_list if z["名"] != zn]
-            st.session_state.z_list.append({"名": zn, "秒": zf}); st.rerun()
+            if zn == "0":
+                st.error("「0」のみの名称は登録できません。")
+            elif len([z for z in st.session_state.z_list if z["名"] != zn]) >= 35:
+                st.error("ゾーンの登録上限（35個）に達しています。")
+            else:
+                st.session_state.z_list = [z for z in st.session_state.z_list if z["名"] != zn]
+                st.session_state.z_list.append({"名": zn, "秒": zf}); st.rerun()
+                
     with st.container(border=True):
-        gn, gt = st.text_input("グループ名"), st.selectbox("タイプ", list(GROUP_TYPES.keys()))
+        # グループ文字数制限(32)追加
+        gn, gt = st.text_input("グループ名", max_chars=32), st.selectbox("タイプ", list(GROUP_TYPES.keys()))
         gz = st.selectbox("所属ゾーン", options=[""] + vz)
         if st.button("グループ保存") and gn and gz:
-            st.session_state.g_list = [g for g in st.session_state.g_list if g["名"] != gn]
-            st.session_state.g_list.append({"名": gn, "型": gt, "ゾ": gz}); st.rerun()
+            groups_in_zone = len([g for g in st.session_state.g_list if g["ゾ"] == gz and g["名"] != gn])
+            if gn == "0":
+                st.error("「0」のみの名称は登録できません。")
+            elif len([g for g in st.session_state.g_list if g["名"] != gn]) >= 140:
+                st.error("グループの登録上限（全体で140個）に達しています。")
+            elif groups_in_zone >= 50:
+                st.error(f"ゾーン「{gz}」のグループ登録上限（50個）に達しています。")
+            else:
+                st.session_state.g_list = [g for g in st.session_state.g_list if g["名"] != gn]
+                st.session_state.g_list.append({"名": gn, "型": gt, "ゾ": gz}); st.rerun()
+
 with c2:
     st.write("登録履歴")
     for i, z in enumerate(st.session_state.z_list):
         cl1, cl2 = st.columns([4, 1])
         cl1.info(f"ゾーン: {z['名']} (フェード: {z['秒']}秒)")
         if cl2.button("削除", key=f"dz_{i}"):
-            st.session_state.z_list.pop(i)
-            st.rerun()
+            st.session_state.z_list.pop(i); st.rerun()
             
     for i, g in enumerate(st.session_state.g_list):
         cl1, cl2 = st.columns([4, 1])
         cl1.success(f"グループ: {g['名']} ({g['ゾ']})")
         if cl2.button("削除", key=f"dg_{i}"):
-            st.session_state.g_list.pop(i)
-            st.rerun()
+            st.session_state.g_list.pop(i); st.rerun()
 
 # 2. シーン作成
 st.divider()
 st.header("2. シーン作成")
-sn_in, sz_in = st.text_input("作成シーン名"), st.selectbox("対象ゾーン選択", options=[""] + vz)
+# シーン文字数制限(32)追加
+sn_in, sz_in = st.text_input("作成シーン名", max_chars=32), st.selectbox("対象ゾーン選択", options=[""] + vz)
 if sz_in:
     scene_tmp = []
     for g in [g for g in st.session_state.g_list if g["ゾ"] == sz_in]:
@@ -160,11 +173,33 @@ if sz_in:
                 if m == "パレット": ex, ey = st.slider("演出X", 1, 11, 6, key=f"x_{g['名']}"), st.slider("演出Y", 1, 11, 6, key=f"y_{g['名']}")
                 else: kel = st.text_input("色温度", "4000", key=f"ks_{g['名']}")
             elif g['型'] == "調光調色": kel = st.text_input("色温度", "4000", key=f"k_{g['名']}")
+            
+            # 色温度の自動補正処理
+            if kel != "":
+                try:
+                    k_val = int(kel)
+                except ValueError:
+                    k_val = 4000
+                if "Synca" in g['型'] and m != "パレット":
+                    k_val = max(1800, min(12000, k_val))
+                    kel = str(k_val)
+                elif g['型'] == "調光調色":
+                    k_val = max(2700, min(6500, k_val))
+                    kel = str(k_val)
+
             scene_tmp.append({"sn": sn_in, "gn": g['名'], "zn": sz_in, "dim": dim, "kel": kel, "ex": ex, "ey": ey})
+            
     if st.button("このシーンを保存"):
         if sn_in:
-            st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == sn_in and s["zn"] == sz_in)]
-            st.session_state.s_list.extend(scene_tmp); st.rerun()
+            if sn_in == "0":
+                st.error("「0」のみの名称は登録できません。")
+            else:
+                existing_scenes = len(set([s['sn'] for s in st.session_state.s_list if s['zn'] == sz_in and s['sn'] != sn_in]))
+                if existing_scenes >= 15:
+                    st.error(f"ゾーン「{sz_in}」のシーン登録上限（15個）に達しています。")
+                else:
+                    st.session_state.s_list = [s for s in st.session_state.s_list if not (s["sn"] == sn_in and s["zn"] == sz_in)]
+                    st.session_state.s_list.extend(scene_tmp); st.rerun()
 
 st.subheader("シーン履歴")
 if st.session_state.s_list:
@@ -181,15 +216,25 @@ if st.session_state.s_list:
 st.divider()
 st.header("3. シーンタイムテーブル設定")
 with st.container(border=True):
-    tl_n = st.text_input("スケジュール名", "通常")
+    # スケジュール文字数制限(32)追加
+    tl_n = st.text_input("スケジュール名", "通常", max_chars=32)
     tl_z = st.selectbox("適用ゾーン", options=[""]+vz, key="tlz")
     tl_d = st.selectbox("適用曜日", DAY_OPTIONS, index=1)
     if st.button("枠を作成") and tl_n and tl_z:
-        st.session_state.timelines.append({
-            "uid": f"tl_{datetime.now().timestamp()}",
-            "name": tl_n, "zone": tl_z, "day": tl_d, 
-            "slots": [{"uid": f"sl_{datetime.now().timestamp()}", "time": time(0, 0), "scene": ""}]
-        }); st.rerun()
+        if tl_n == "0":
+            st.error("「0」のみの名称は登録できません。")
+        else:
+            tl_in_zone = len([t for t in st.session_state.timelines if t['zone'] == tl_z])
+            if tl_in_zone >= 10:
+                st.error(f"ゾーン「{tl_z}」のタイムテーブル上限（10個）に達しています。")
+            elif len(st.session_state.timelines) >= 105:
+                st.error("システム全体のタイムテーブル上限（105個）に達しています。")
+            else:
+                st.session_state.timelines.append({
+                    "uid": f"tl_{datetime.now().timestamp()}",
+                    "name": tl_n, "zone": tl_z, "day": tl_d, 
+                    "slots": [{"uid": f"sl_{datetime.now().timestamp()}", "time": time(0, 0), "scene": ""}]
+                }); st.rerun()
 
 for i, tl in enumerate(st.session_state.timelines):
     with st.expander(f"{tl['name']} (ゾーン: {tl['zone']}) - {tl['day']}", expanded=True):
@@ -230,13 +275,19 @@ for i, tl in enumerate(st.session_state.timelines):
 st.divider()
 st.header("4. 特異日設定")
 with st.form("p_form", clear_on_submit=True):
-    pn = st.text_input("名称 [zone-period]")
+    # 期間特異日文字数制限(32)追加
+    pn = st.text_input("名称 [zone-period]", max_chars=32)
     exist_tt = sorted(list(set([tl['name'] for tl in st.session_state.timelines])))
     ps_name = st.selectbox("適用スケジュール [timetable]", options=exist_tt if exist_tt else ["なし"])
     pc1, pc2 = st.columns(2); psd, ped = pc1.date_input("開始"), pc2.date_input("終了")
     if st.form_submit_button("特異日を追加") and ps_name != "なし":
-        tz = next(tl['zone'] for tl in st.session_state.timelines if tl['name'] == ps_name)
-        st.session_state.p_list.append({"名": pn, "sd": psd, "ed": ped, "sn": ps_name, "zn": tz}); st.rerun()
+        if not pn or pn == "0":
+            st.error("名称を入力してください（「0」のみは不可）。")
+        elif len(st.session_state.p_list) >= 630:
+            st.error("特異日・期間の登録上限（全体で630個）に達しています。")
+        else:
+            tz = next(tl['zone'] for tl in st.session_state.timelines if tl['name'] == ps_name)
+            st.session_state.p_list.append({"名": pn, "sd": psd, "ed": ped, "sn": ps_name, "zn": tz}); st.rerun()
 
 for i, p in enumerate(st.session_state.p_list):
     c1, c2 = st.columns([4, 1]); c1.write(f"日付: {p['名']} ({p['sd']}~{p['ed']}) -> {p['sn']}"); 
@@ -244,7 +295,6 @@ for i, p in enumerate(st.session_state.p_list):
 
 # 5. 出力
 st.divider()
-# 【修正】ファイル名が空欄の場合は「export.tar」になるように保険をかけています
 download_filename = f"{shop_name}.tar" if shop_name.strip() else "export.tar"
 
 if st.button(".tar を生成", type="primary", use_container_width=True):
@@ -291,4 +341,4 @@ if st.button(".tar を生成", type="primary", use_container_width=True):
         ti = tarfile.TarInfo("setting_data.csv"); ti.size = len(b); tar.addfile(ti, io.BytesIO(b))
         jb = json.dumps({"pair": [], "csv": "setting_data.csv"}).encode('utf-8')
         tj = tarfile.TarInfo("temp.json"); tj.size = len(jb); tar.addfile(tj, io.BytesIO(jb))
-    st.download_button(f"📥 {download_filename} を保存", tar_buf.getvalue(), download_filename)
+    st.download_button(f" {download_filename} を保存", tar_buf.getvalue(), download_filename)
