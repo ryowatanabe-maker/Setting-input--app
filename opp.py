@@ -110,7 +110,8 @@ with st.sidebar:
         st.rerun()
 
 st.title("FitPlus 設定ツール")
-shop_name = st.text_input("店舗名を入力", "FitPlus_Project")
+# 【修正】デフォルトの文字をなくし、最初から空白になるようにしました
+shop_name = st.text_input("店舗名を入力", "")
 
 # 1. ゾーン & グループ
 st.header("1. ゾーン & グループ登録")
@@ -130,7 +131,6 @@ with c1:
             st.session_state.g_list.append({"名": gn, "型": gt, "ゾ": gz}); st.rerun()
 with c2:
     st.write("登録履歴")
-    # ここが「False」を消してフェード時間を表示した正しい書き方です
     for i, z in enumerate(st.session_state.z_list):
         cl1, cl2 = st.columns([4, 1])
         cl1.info(f"ゾーン: {z['名']} (フェード: {z['秒']}秒)")
@@ -244,6 +244,9 @@ for i, p in enumerate(st.session_state.p_list):
 
 # 5. 出力
 st.divider()
+# 【修正】ファイル名が空欄の場合は「export.tar」になるように保険をかけています
+download_filename = f"{shop_name}.tar" if shop_name.strip() else "export.tar"
+
 if st.button(".tar を生成", type="primary", use_container_width=True):
     rows = [[""] * TOTAL_COLS for _ in range(500)]
     for i, z in enumerate(st.session_state.z_list): rows[i][0], rows[i][2] = z["名"], z["秒"]
@@ -288,4 +291,4 @@ if st.button(".tar を生成", type="primary", use_container_width=True):
         ti = tarfile.TarInfo("setting_data.csv"); ti.size = len(b); tar.addfile(ti, io.BytesIO(b))
         jb = json.dumps({"pair": [], "csv": "setting_data.csv"}).encode('utf-8')
         tj = tarfile.TarInfo("temp.json"); tj.size = len(jb); tar.addfile(tj, io.BytesIO(jb))
-    st.download_button(f"{shop_name}.tar を保存", tar_buf.getvalue(), f"{shop_name}.tar")
+    st.download_button(f"📥 {download_filename} を保存", tar_buf.getvalue(), download_filename)
