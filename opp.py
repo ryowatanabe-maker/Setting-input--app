@@ -5,8 +5,8 @@ import json
 import tarfile
 from datetime import datetime, timedelta, time
 
-# --- スロット上限の拡張 ---
-MAX_SLOTS = 150      # 限界値を150個まで大幅に拡張（10分間隔で24時間分でも144個）
+# --- スロット上限の修正（公式仕様に準拠） ---
+MAX_SLOTS = 100      # 限界値を公式仕様の100個に厳格化
 TOTAL_COLS = 400     # 全体の列数も余裕を持って拡張
 
 IDX_SCENE_START = 9
@@ -116,7 +116,6 @@ vz = [z["名"] for z in st.session_state.z_list]
 c1, c2 = st.columns(2)
 with c1:
     with st.container(border=True):
-        # ゾーン文字数制限(32)追加
         zn, zf = st.text_input("ゾーン名", max_chars=32), st.number_input("フェード(秒)", 0, 3600, 0)
         if st.button("ゾーン保存") and zn:
             if zn == "0":
@@ -128,7 +127,6 @@ with c1:
                 st.session_state.z_list.append({"名": zn, "秒": zf}); st.rerun()
                 
     with st.container(border=True):
-        # グループ文字数制限(32)追加
         gn, gt = st.text_input("グループ名", max_chars=32), st.selectbox("タイプ", list(GROUP_TYPES.keys()))
         gz = st.selectbox("所属ゾーン", options=[""] + vz)
         if st.button("グループ保存") and gn and gz:
@@ -160,7 +158,6 @@ with c2:
 # 2. シーン作成
 st.divider()
 st.header("2. シーン作成")
-# シーン文字数制限(32)追加
 sn_in, sz_in = st.text_input("作成シーン名", max_chars=32), st.selectbox("対象ゾーン選択", options=[""] + vz)
 if sz_in:
     scene_tmp = []
@@ -216,7 +213,6 @@ if st.session_state.s_list:
 st.divider()
 st.header("3. シーンタイムテーブル設定")
 with st.container(border=True):
-    # スケジュール文字数制限(32)追加
     tl_n = st.text_input("スケジュール名", "通常", max_chars=32)
     tl_z = st.selectbox("適用ゾーン", options=[""]+vz, key="tlz")
     tl_d = st.selectbox("適用曜日", DAY_OPTIONS, index=1)
@@ -232,13 +228,31 @@ with st.container(border=True):
             else:
                 st.session_state.timelines.append({
                     "uid": f"tl_{datetime.now().timestamp()}",
-                    "name": tl_n, "zone": tl_z, "day": tl_d, 
+                    "name": tl_n, "zone": tl_z, "day": tl_d,
+                    "sun_start": "", "sun_end": "",  # 日の出・日の入用のデータを追加
                     "slots": [{"uid": f"sl_{datetime.now().timestamp()}", "time": time(0, 0), "scene": ""}]
                 }); st.rerun()
 
 for i, tl in enumerate(st.session_state.timelines):
     with st.expander(f"{tl['name']} (ゾーン: {tl['zone']}) - {tl['day']}", expanded=True):
         z_scenes = sorted(list(set([s['sn'] for s in st.session_state.s_list if s['zn'] == tl['zone']])))
+        
+        # --- 日の出・日の入の設定 ---
+        st.write("🌅 **日の出・日の入シーン設定**")
+        sc1, sc2 = st.columns(2)
+        # 現在の選択値を安全に取得（過去のセーブデータ対策で .get を使用）
+        current_sun_start = tl.get("sun_start", "")
+        current_sun_end = tl.get("sun_end", "")
+        
+        sun_start_val = sc1.selectbox("日の出シーン", options=[""] + z_scenes, index=z_scenes.index(current_sun_start)+1 if current_sun_start in z_scenes else 0, key=f"sun_st_{tl['uid']}")
+        sun_end_val = sc2.selectbox("日の入シーン", options=[""] + z_scenes, index=z_scenes.index(current_sun_end)+1 if current_sun_end in z_scenes else 0, key=f"sun_en_{tl['uid']}")
+        
+        # 値が変更されたら保存
+        st.session_state.timelines[i]["sun_start"] = sun_start_val
+        st.session_state.timelines[i]["sun_end"] = sun_end_val
+        
+        st.divider()
+
         with st.container(border=True):
             st.write("一括生成")
             bulk_scenes = st.multiselect("順序", options=z_scenes, key=f"bulk_s_{i}")
@@ -267,7 +281,10 @@ for i, tl in enumerate(st.session_state.timelines):
 
         c_act1, c_act2 = st.columns(2)
         if c_act1.button("＋ 時刻を追加", key=f"add_v_{tl['uid']}"):
-            st.session_state.timelines[i]['slots'].append({"uid": f"m_{datetime.now().timestamp()}", "time": time(0,0), "scene": ""}); st.rerun()
+            if len(st.session_state.timelines[i]['slots']) >= MAX_SLOTS:
+                st.error(f"1タイムテーブルの枠数は最大{MAX_SLOTS}個までです。")
+            else:
+                st.session_state.timelines[i]['slots'].append({"uid": f"m_{datetime.now().timestamp()}", "time": time(0,0), "scene": ""}); st.rerun()
         if c_act2.button("この枠を削除", key=f"dtl_v_{tl['uid']}"):
             st.session_state.timelines.pop(i); st.rerun()
 
@@ -275,7 +292,6 @@ for i, tl in enumerate(st.session_state.timelines):
 st.divider()
 st.header("4. 特異日設定")
 with st.form("p_form", clear_on_submit=True):
-    # 期間特異日文字数制限(32)追加
     pn = st.text_input("名称 [zone-period]", max_chars=32)
     exist_tt = sorted(list(set([tl['name'] for tl in st.session_state.timelines])))
     ps_name = st.selectbox("適用スケジュール [timetable]", options=exist_tt if exist_tt else ["なし"])
@@ -299,7 +315,7 @@ download_filename = f"{shop_name}.tar" if shop_name.strip() else "export.tar"
 
 if st.button(".tar を生成", type="primary", use_container_width=True):
     rows = [[""] * TOTAL_COLS for _ in range(500)]
-    for i, z in enumerate(st.session_state.z_list): rows[i][0], rows[i][2] = z["名"], z["秒"]
+    for i, z in enumerate(st.session_state.z_list): rows[i][0], rows[i][2] = z z["名"], z["秒"]
     for i, g in enumerate(st.session_state.g_list): rows[i][4], rows[i][6], rows[i][7] = g["名"], GROUP_TYPES[g["型"]], g["ゾ"]
     for i, r in enumerate(st.session_state.s_list):
         p_v, c_v = (f" {r['ex']}-{r['ey']}", "") if r['ex'] != "" else ("", r['kel'])
@@ -307,8 +323,14 @@ if st.button(".tar を生成", type="primary", use_container_width=True):
     
     for i, tl in enumerate(st.session_state.timelines):
         rows[i][17], rows[i][19] = tl['name'], tl['zone']
+        
+        # --- 取得した「日の出・日の入」をCSVの20列・21列目に格納 ---
+        rows[i][20] = tl.get('sun_start', '')
+        rows[i][21] = tl.get('sun_end', '')
+        
         sort_s = sorted(tl['slots'], key=lambda x: x['time'])
         for j, s in enumerate(sort_s):
+            if j >= MAX_SLOTS: break # 万が一上限を超えていた場合はカット
             col = IDX_TIME_START + j*2
             if col + 1 < IDX_ZONE_TS - 1: rows[i][col], rows[i][col+1] = fmt_t(s['time']), s['scene']
         
@@ -326,6 +348,7 @@ if st.button(".tar を生成", type="primary", use_container_width=True):
     h1 += [""] * (IDX_ZONE_TS - len(h1)) + ["Timetable-schedule情報"]
     h1 += [""] * (IDX_PERIOD_NAME - len(h1)) + ["Timetable期間/特異日情報"]
     
+    # 20列目[sun-start-scene]、21列目[sun-end-scene] のヘッダーもそのまま維持
     h3 = ['[zone]','[id]','[fade]','','[group]','[id]','[type]','[zone]','','[scene]','[id]','[dimming]','[color]','[perform]','[zone]','[group]','','[zone-timetable]','[id]','[zone]','[sun-start-scene]','[sun-end-scene]']
     
     for _ in range(MAX_SLOTS): h3 += ['[time]','[scene]']
