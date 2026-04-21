@@ -315,7 +315,8 @@ download_filename = f"{shop_name}.tar" if shop_name.strip() else "export.tar"
 
 if st.button(".tar を生成", type="primary", use_container_width=True):
     rows = [[""] * TOTAL_COLS for _ in range(500)]
-    for i, z in enumerate(st.session_state.z_list): rows[i][0], rows[i][2] = z z["名"], z["秒"]
+    # 【修正箇所】ここで z z["名"] になっていたのを z["名"] に修正しました！
+    for i, z in enumerate(st.session_state.z_list): rows[i][0], rows[i][2] = z["名"], z["秒"]
     for i, g in enumerate(st.session_state.g_list): rows[i][4], rows[i][6], rows[i][7] = g["名"], GROUP_TYPES[g["型"]], g["ゾ"]
     for i, r in enumerate(st.session_state.s_list):
         p_v, c_v = (f" {r['ex']}-{r['ey']}", "") if r['ex'] != "" else ("", r['kel'])
