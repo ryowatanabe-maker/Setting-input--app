@@ -413,7 +413,13 @@ with tab_report:
         rating = st.slider("評価（1〜5）", 1, 5, 4, help="1: 使いにくい 〜 5: 非常に使いやすい")
         good_points = st.text_area("良かった点・効果（感想）")
         improvements = st.text_area("改善点・要望（自由記述）")
-        official_approval = st.selectbox("公式化への賛否", ["ぜひ導入すべき", "改善すれば導入すべき", "不要"])
+        
+        # ラジオボタンの「」を含む文字列をGoogleフォームの選択肢に完全一致させる
+        official_approval = st.radio(
+            "公式化への賛否", 
+            ["「ぜひ導入すべき」", "改善すれば導入すべき", "不要"],
+            horizontal=True
+        )
 
         submitted = st.form_submit_button("アンケートを送信する", type="primary")
         
@@ -421,8 +427,11 @@ with tab_report:
             if not f_org_name or not f_name or not f_shop_name:
                 st.error("「店舗名」「会社名・部署名」「回答者氏名」を入力のうえ、送信してください。")
             else:
-                # フォーム送信データの組み立て（全12要素）
+                # Googleフォームの日付項目対応 (個別の年月日フォーマット)
                 form_payload = {
+                    f"{ENTRY_DATE}_year": str(f_date.year),
+                    f"{ENTRY_DATE}_month": str(f_date.month),
+                    f"{ENTRY_DATE}_day": str(f_date.day),
                     ENTRY_DATE: f_date.strftime("%Y-%m-%d"),
                     ENTRY_USER_TYPE: f_user_type,
                     ENTRY_ORG_NAME: f_org_name,
@@ -439,11 +448,13 @@ with tab_report:
 
                 try:
                     res = requests.post(FORM_URL, data=form_payload)
-                    # ステータスコードが200（成功）または成功画面リダイレクト(302等)で成功と判定
                     if res.status_code in [200, 302]:
                         st.success("🎉 ご回答ありがとうございました！スプレッドシートへ直接記録されました。")
                         st.balloons()
                     else:
-                        st.error(f"送信時にエラーが発生しました。(HTTP {res.status_code}) Googleフォームの設定（ログイン制限等）をご確認ください。")
+                        st.error(f"送信時にエラーが発生しました (HTTP {res.status_code})。")
+                        # 万が一400が出る場合、どのデータ形式で拒否されたかを確認用表示
+                        with st.expander("送信データ詳細"):
+                            st.json(form_payload)
                 except Exception as e:
                     st.error(f"通信エラーが発生しました: {e}")
