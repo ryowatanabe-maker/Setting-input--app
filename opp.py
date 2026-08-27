@@ -409,6 +409,8 @@ with tab_report:
 
         st.subheader("💬 感想・評価")
         rating = st.slider("評価（1〜5）", 1, 5, 4, help="1: 使いにくい 〜 5: 非常に使いやすい")
+        good_points = st.text_area("良かった点・効果（感想）")
+        improvements = st.text_area("改善点・要望（自由記述）")
         official_approval = st.selectbox("公式化への賛否", ["ぜひ導入すべき", "改善すれば導入すべき", "不要"])
 
         submitted = st.form_submit_button("アンケートを送信する", type="primary")
@@ -417,7 +419,6 @@ with tab_report:
             if not f_org_name or not f_name or not f_shop_name:
                 st.error("「店舗名」「会社名・部署名」「回答者氏名」を入力のうえ、送信してください。")
             else:
-                # フォーム送信データの組み立て（新URLの全entry ID対応）
                 form_payload = {
                     ENTRY_DATE: f_date.strftime("%Y-%m-%d"),
                     ENTRY_USER_TYPE: f_user_type,
