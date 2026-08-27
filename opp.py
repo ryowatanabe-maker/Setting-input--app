@@ -415,6 +415,7 @@ with tab_report:
         good_points = st.text_area("良かった点・効果（感想）")
         improvements = st.text_area("改善点・要望（自由記述）")
         
+        # フォームの定義に合わせて「」を含めた文字列を選択肢に設定
         official_approval = st.radio(
             "公式化への賛否", 
             ["「ぜひ導入すべき」", "改善すれば導入すべき", "不要"],
@@ -427,11 +428,8 @@ with tab_report:
             if not f_org_name or not f_name or not f_shop_name:
                 st.error("「店舗名」「会社名・部署名」「回答者氏名」を入力のうえ、送信してください。")
             else:
-                # フォーム送信データの組み立て（entry.453043313 へ時間削減率を送信）
+                # 修正ポイント: 日付送信を YYYY-MM-DD 文字列のみに絞り、二重送信（_year等）を排除
                 form_payload = {
-                    f"{ENTRY_DATE}_year": str(f_date.year),
-                    f"{ENTRY_DATE}_month": str(f_date.month),
-                    f"{ENTRY_DATE}_day": str(f_date.day),
                     ENTRY_DATE: f_date.strftime("%Y-%m-%d"),
                     ENTRY_USER_TYPE: f_user_type,
                     ENTRY_ORG_NAME: f_org_name,
