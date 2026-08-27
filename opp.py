@@ -377,7 +377,7 @@ with tab_report:
     st.info("💡 入力された内容は作成済みの【試用成果・所感集計シート】へ反映・集計されます。")
 
     with st.form("feedback_report_form"):
-        f_user_type = st.radio("区分", ["協力会社", "自社社員"], horizontal=True")
+        f_user_type = st.radio("区分", ["協力会社", "自社社員"], horizontal=True)
         f_org_name = st.text_input("会社名・部署名", placeholder=")
         f_name = st.text_input("回答者氏名", placeholder=")
         
