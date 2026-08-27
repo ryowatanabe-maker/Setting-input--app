@@ -1,9 +1,22 @@
+import requests
 import streamlit as st
 import pandas as pd
 import io
 import json
 import tarfile
 from datetime import datetime, timedelta, time
+
+# --- Googleフォーム自動連携用設定 ---
+FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSc-r68lK0S5K94FZB7XWTogZqzcZNwmHd8OR2_M23gIwqRsXA/formResponse"
+
+ENTRY_USER_TYPE = "entry.91556552"         # 区分
+ENTRY_ORG_NAME = "entry.761803893"         # 会社名・部署名
+ENTRY_NAME = "entry.1373225987"            # 回答者氏名
+ENTRY_BEFORE_TIME = "entry.1027812746"     # 従来時間（分）
+ENTRY_AFTER_TIME = "entry.800808262"       # アプリ利用後時間（分）
+ENTRY_SAVED_TIME = "entry.912412104"       # 削減時間（分）
+ENTRY_RATING = "entry.389617408"           # 評価（1〜5）
+ENTRY_APPROVAL = "entry.1281864644"        # 公式化への賛否
 
 # --- スロット上限の修正（公式仕様に準拠） ---
 MAX_SLOTS = 100      # 限界値を公式仕様の100個に厳格化
@@ -14,7 +27,6 @@ IDX_TT_NAME = 17     # R列
 IDX_TT_ZONE = 19     # T列
 IDX_TIME_START = 22  # W列: スロット開始
 
-# スロット上限(MAX_SLOTS)に合わせて、後ろのブロックを自動でズラす
 IDX_ZONE_TS = IDX_TIME_START + (MAX_SLOTS * 2) + 1  # スロット終了後に1列空ける
 IDX_PERIOD_NAME = IDX_ZONE_TS + 10                  # スケジュール割当終了後に1列空ける
 
@@ -34,7 +46,6 @@ if 'timelines' not in st.session_state: st.session_state.timelines = []
 def fmt_t(t): return f"{t.hour}:{t.minute:02}"
 def fmt_d(d): return f"{d.month}月{d.day}日"
 
-# 削除用コールバック (UID特定方式)
 def delete_slot_by_uid(tl_idx, slot_uid):
     st.session_state.timelines[tl_idx]['slots'] = [
         s for s in st.session_state.timelines[tl_idx]['slots'] if s['uid'] != slot_uid
@@ -109,11 +120,11 @@ with st.sidebar:
 
 st.title("FitPlus 設定ツール")
 
-# タブで画面を明確に分離（設定ツール本体 と 導入効果アンケート）
+# タブで画面を分割
 tab_main, tab_report = st.tabs(["⚙️ 設定ツール", "📊 導入効果・所感アンケート"])
 
 # ==========================================
-# TAB 1: 設定ツール本体（元の仕様そのまま）
+# TAB 1: 設定ツール本体
 # ==========================================
 with tab_main:
     shop_name = st.text_input("店舗名を入力", "")
@@ -179,7 +190,6 @@ with tab_main:
                     else: kel = st.text_input("色温度", "4000", key=f"ks_{g['名']}")
                 elif g['型'] == "調光調色": kel = st.text_input("色温度", "4000", key=f"k_{g['名']}")
                 
-                # 色温度の自動補正処理
                 if kel != "":
                     try:
                         k_val = int(kel)
@@ -369,15 +379,15 @@ with tab_main:
         st.download_button(f" {download_filename} を保存", tar_buf.getvalue(), download_filename)
 
 # ==========================================
-# TAB 2: 導入効果・所感アンケート（別タブ表示）
+# TAB 2: 導入効果・所感アンケート（自動送信）
 # ==========================================
 with tab_report:
     st.header("📊 FitPlus設定ツール 導入効果・所感アンケート")
     st.write("本ツールの利用による作業時間の短縮効果や使い心地についてご協力をお願いいたします。")
-    st.info("💡 入力された内容は作成済みの【試用成果・所感集計シート】へ反映・集計されます。")
+    st.info("💡 入力された内容はスプレッドシートへ自動反映・集計されます。")
 
     with st.form("feedback_report_form"):
-        f_user_type = st.radio("区分", ["協力会社", "自社社員"], horizontal=True)
+        f_user_type = st.radio("区分", ["自社社員", "協力会社"], horizontal=True)
         f_org_name = st.text_input("会社名・部署名")
         f_name = st.text_input("回答者氏名")
         
@@ -386,7 +396,7 @@ with tab_report:
         with col_t1:
             before_time = st.number_input("従来かかっていた設定・調整時間（分）", min_value=1, value=60, step=5)
         with col_t2:
-            after_time = st.number_input("本ツール利用後にかかった時間（分）", min_value=0, value=15, step=5)
+            after_time = st.number_input("本ツール利用後にかかった時間（分）", min_value=0, value=30, step=5)
             
         saved_time = max(0, before_time - after_time)
         saved_rate = round((saved_time / before_time) * 100, 1) if before_time > 0 else 0
@@ -394,13 +404,33 @@ with tab_report:
         st.metric(label="削減された時間（1回あたり）", value=f"{saved_time} 分", delta=f"{saved_rate}% 削減")
 
         st.subheader("💬 感想・評価")
-        rating = st.slider("評価（使いやすさ）", 1, 5, 4, help="1: 使いにくい 〜 5: 非常に使いやすい")
-        good_points = st.text_area("良かった点・効果を感じた部分")
-        improvements = st.text_area("改善点・要望・不具合など")
-        official_approval = st.selectbox("公式アプリ化への賛否", ["ぜひ導入すべき", "改善すれば導入すべき", "不要"])
+        rating = st.slider("評価（1〜5）", 1, 5, 4, help="1: 使いにくい 〜 5: 非常に使いやすい")
+        official_approval = st.selectbox("公式化への賛否", ["ぜひ導入すべき", "改善すれば導入すべき", "不要"])
 
         submitted = st.form_submit_button("アンケートを送信する", type="primary")
         
         if submitted:
-            st.success("🎉 ご回答ありがとうございました！集計シートに反映されました。")
-            st.balloons()
+            if not f_org_name or not f_name:
+                st.error("「会社名・部署名」と「回答者氏名」を入力のうえ、送信してください。")
+            else:
+                # フォーム送信データの組み立て
+                form_payload = {
+                    ENTRY_USER_TYPE: f_user_type,
+                    ENTRY_ORG_NAME: f_org_name,
+                    ENTRY_NAME: f_name,
+                    ENTRY_BEFORE_TIME: str(before_time),
+                    ENTRY_AFTER_TIME: str(after_time),
+                    ENTRY_SAVED_TIME: str(saved_time),
+                    ENTRY_RATING: str(rating),
+                    ENTRY_APPROVAL: official_approval
+                }
+
+                try:
+                    res = requests.post(FORM_URL, data=form_payload)
+                    if res.status_code == 200:
+                        st.success("🎉 ご回答ありがとうございました！スプレッドシートへ直接記録されました。")
+                        st.balloons()
+                    else:
+                        st.error("送信時にエラーが発生しました。設定を確認してください。")
+                except Exception as e:
+                    st.error(f"通信エラーが発生しました: {e}")
