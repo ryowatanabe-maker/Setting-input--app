@@ -18,6 +18,8 @@ ENTRY_BEFORE_TIME = "entry.1027812746"     # 従来時間（分）
 ENTRY_AFTER_TIME = "entry.800808262"       # アプリ利用後時間（分）
 ENTRY_SAVED_TIME = "entry.912412104"       # 削減時間（分）
 ENTRY_RATING = "entry.389617408"           # 評価（1〜5）
+ENTRY_GOOD_POINTS = "entry.93002036"       # 良かった点・効果
+ENTRY_IMPROVEMENTS = "entry.969188001"     # 改善点・要望
 ENTRY_APPROVAL = "entry.1281864644"        # 公式化への賛否
 
 # --- スロット上限の修正（公式仕様に準拠） ---
@@ -419,7 +421,7 @@ with tab_report:
             if not f_org_name or not f_name or not f_shop_name:
                 st.error("「店舗名」「会社名・部署名」「回答者氏名」を入力のうえ、送信してください。")
             else:
-                # フォーム送信データの組み立て（全項目を完全連携）
+                # フォーム送信データの組み立て（新判明した全10項目を完全連携）
                 form_payload = {
                     ENTRY_DATE: f_date.strftime("%Y-%m-%d"),
                     ENTRY_USER_TYPE: f_user_type,
@@ -430,6 +432,8 @@ with tab_report:
                     ENTRY_AFTER_TIME: str(after_time),
                     ENTRY_SAVED_TIME: str(saved_time),
                     ENTRY_RATING: str(rating),
+                    ENTRY_GOOD_POINTS: good_points,
+                    ENTRY_IMPROVEMENTS: improvements,
                     ENTRY_APPROVAL: official_approval
                 }
 
