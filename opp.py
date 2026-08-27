@@ -1,45 +1,29 @@
 import requests
-import urllib.parse
+import json
 import streamlit as st
 import pandas as pd
 import io
-import json
 import tarfile
 from datetime import datetime, timedelta, time
 
-# --- Googleフォーム自動連携用設定 ---
-FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSc-r68lK0S5K94FZB7XWTogZqzcZNwmHd8OR2_M23gIwqRsXA/formResponse"
-
-ENTRY_DATE = "entry.1606434213"            # 日付
-ENTRY_USER_TYPE = "entry.91556552"         # 区分
-ENTRY_ORG_NAME = "entry.761803893"         # 会社名・部署名
-ENTRY_NAME = "entry.1373225987"            # 回答者氏名
-ENTRY_SHOP_NAME = "entry.389335091"        # 店舗名
-ENTRY_BEFORE_TIME = "entry.1027812746"     # 従来時間（分）
-ENTRY_AFTER_TIME = "entry.800808262"       # アプリ利用後時間（分）
-ENTRY_SAVED_TIME = "entry.912412104"       # 削減時間（分）
-ENTRY_SAVED_RATE = "entry.453043313"       # 時間削減率（%）
-ENTRY_RATING = "entry.389617408"           # 評価（1〜5）
-ENTRY_GOOD_POINTS = "entry.93002036"       # 良かった点・効果
-ENTRY_IMPROVEMENTS = "entry.969188001"     # 改善点・要望
-ENTRY_APPROVAL = "entry.1281864644"        # 公式化への賛否
+# --- Google Apps Script (GAS) 連携用 URL ---
+GAS_WEB_APP_URL = "https://script.google.com/macros/s/1HSG7EcxFvRWpRwsmYD4k5vzN7F_CKX9FTAZ420ORGJv56cQD2Zd0IiYy/exec"
 
 # --- スロット上限の修正（公式仕様に準拠） ---
-MAX_SLOTS = 100      # 限界値を公式仕様の100個に厳格化
-TOTAL_COLS = 400     # 全体の列数も余裕を持って拡張
+MAX_SLOTS = 100
+TOTAL_COLS = 400
 
 IDX_SCENE_START = 9
-IDX_TT_NAME = 17     # R列
-IDX_TT_ZONE = 19     # T列
-IDX_TIME_START = 22  # W列: スロット開始
+IDX_TT_NAME = 17
+IDX_TT_ZONE = 19
+IDX_TIME_START = 22
 
-IDX_ZONE_TS = IDX_TIME_START + (MAX_SLOTS * 2) + 1  # スロット終了後に1列空ける
-IDX_PERIOD_NAME = IDX_ZONE_TS + 10                  # スケジュール割当終了後に1列空ける
+IDX_ZONE_TS = IDX_TIME_START + (MAX_SLOTS * 2) + 1
+IDX_PERIOD_NAME = IDX_ZONE_TS + 10
 
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["(空白)", "毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-# 最初から左メニューを開いた状態にする設定
 st.set_page_config(page_title="FitPlus Setting Tool", layout="wide", initial_sidebar_state="expanded")
 
 # セッション管理
@@ -57,7 +41,6 @@ def delete_slot_by_uid(tl_idx, slot_uid):
         s for s in st.session_state.timelines[tl_idx]['slots'] if s['uid'] != slot_uid
     ]
 
-# --- 途中保存・読込機能 ---
 def export_session_to_json():
     export_data = {
         "z_list": st.session_state.z_list,
@@ -126,7 +109,6 @@ with st.sidebar:
 
 st.title("FitPlus 設定ツール")
 
-# タブで画面を分割
 tab_main, tab_report = st.tabs(["⚙️ 設定ツール", "📊 導入効果・所感アンケート"])
 
 # ==========================================
@@ -385,7 +367,7 @@ with tab_main:
         st.download_button(f" {download_filename} を保存", tar_buf.getvalue(), download_filename)
 
 # ==========================================
-# TAB 2: 導入効果・所感アンケート（自動送信）
+# TAB 2: 導入効果・所感アンケート（GAS直接連携）
 # ==========================================
 with tab_report:
     st.header("📊 FitPlus設定ツール 導入効果・所感アンケート")
@@ -428,32 +410,28 @@ with tab_report:
             if not f_org_name or not f_name or not f_shop_name:
                 st.error("「店舗名」「会社名・部署名」「回答者氏名」を入力のうえ、送信してください。")
             else:
-                # 改行コードなどのエスケープ処理を実施してフォーム送信用データを生成
-                form_payload = {
-                    f"{ENTRY_DATE}_year": str(f_date.year),
-                    f"{ENTRY_DATE}_month": str(f_date.month),
-                    f"{ENTRY_DATE}_day": str(f_date.day),
-                    ENTRY_USER_TYPE: f_user_type,
-                    ENTRY_ORG_NAME: f_org_name,
-                    ENTRY_NAME: f_name,
-                    ENTRY_SHOP_NAME: f_shop_name,
-                    ENTRY_BEFORE_TIME: str(before_time),
-                    ENTRY_AFTER_TIME: str(after_time),
-                    ENTRY_SAVED_TIME: str(saved_time),
-                    ENTRY_SAVED_RATE: f"{saved_rate}％",
-                    ENTRY_RATING: str(rating),
-                    ENTRY_GOOD_POINTS: good_points.replace('\r\n', '\n').strip(),
-                    ENTRY_IMPROVEMENTS: improvements.replace('\r\n', '\n').strip(),
-                    ENTRY_APPROVAL: official_approval
+                # GAS送信用JSONデータ
+                payload = {
+                    "date": f_date.strftime("%Y-%m-%d"),
+                    "user_type": f_user_type,
+                    "org_name": f_org_name,
+                    "name": f_name,
+                    "shop_name": f_shop_name,
+                    "before_time": before_time,
+                    "after_time": after_time,
+                    "saved_time": saved_time,
+                    "saved_rate": f"{saved_rate}%",
+                    "rating": rating,
+                    "good_points": good_points,
+                    "improvements": improvements,
+                    "approval": official_approval
                 }
 
                 try:
-                    res = requests.post(FORM_URL, data=form_payload)
-                    if res.status_code in [200, 302]:
+                    res = requests.post(GAS_WEB_APP_URL, data=json.dumps(payload), headers={"Content-Type": "application/json"})
+                    if res.status_code == 200:
                         st.success("🎉 ご回答ありがとうございました！スプレッドシートへ直接記録されました。")
                     else:
-                        st.error(f"送信時にエラーが発生しました (HTTP {res.status_code})。")
-                        with st.expander("送信データ詳細"):
-                            st.json(form_payload)
+                        st.error(f"送信時にエラーが発生しました (HTTP {res.status_code})。GASの設定（アクセス権限等）をご確認ください。")
                 except Exception as e:
                     st.error(f"通信エラーが発生しました: {e}")
