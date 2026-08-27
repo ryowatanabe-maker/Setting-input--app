@@ -1,4 +1,5 @@
 import requests
+import urllib.parse
 import streamlit as st
 import pandas as pd
 import io
@@ -427,7 +428,7 @@ with tab_report:
             if not f_org_name or not f_name or not f_shop_name:
                 st.error("「店舗名」「会社名・部署名」「回答者氏名」を入力のうえ、送信してください。")
             else:
-                # 辞書型（dict）で全項目を確実に定義して送信
+                # 改行コードなどのエスケープ処理を実施してフォーム送信用データを生成
                 form_payload = {
                     f"{ENTRY_DATE}_year": str(f_date.year),
                     f"{ENTRY_DATE}_month": str(f_date.month),
@@ -441,8 +442,8 @@ with tab_report:
                     ENTRY_SAVED_TIME: str(saved_time),
                     ENTRY_SAVED_RATE: f"{saved_rate}％",
                     ENTRY_RATING: str(rating),
-                    ENTRY_GOOD_POINTS: good_points,
-                    ENTRY_IMPROVEMENTS: improvements,
+                    ENTRY_GOOD_POINTS: good_points.replace('\r\n', '\n').strip(),
+                    ENTRY_IMPROVEMENTS: improvements.replace('\r\n', '\n').strip(),
                     ENTRY_APPROVAL: official_approval
                 }
 
