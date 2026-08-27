@@ -21,7 +21,7 @@ IDX_PERIOD_NAME = IDX_ZONE_TS + 10                  # スケジュール割当�
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["(空白)", "毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-# ページ基本設定
+# ページ基本設定（ワイド画面・左メニュー展開）
 st.set_page_config(page_title="FitPlus Setting Tool", layout="wide", initial_sidebar_state="expanded")
 
 # セッション管理
@@ -40,7 +40,7 @@ def delete_slot_by_uid(tl_idx, slot_uid):
         s for s in st.session_state.timelines[tl_idx]['slots'] if s['uid'] != slot_uid
     ]
 
-# --- 途中セーブ・ロード機能 ---
+# --- 途中保存・読込機能 ---
 def export_session_to_json():
     export_data = {
         "z_list": st.session_state.z_list,
@@ -79,9 +79,9 @@ def import_session_from_json(json_str):
         timelines.append(tl)
     st.session_state.timelines = timelines
 
-# サイドバー設定 (セーブ・ロード・リセット)
+# サイドバー設定 (保存・読込・リセット)
 with st.sidebar:
-    st.header("途中保存 / 読み込み")
+    st.header("保存 / 読込")
     st.write("途中から再開するための専用ファイル(.json)を保存・読み込みします。")
     
     save_data = export_session_to_json()
@@ -95,7 +95,7 @@ with st.sidebar:
     
     st.divider()
     
-    uploaded_file = st.file_uploader("データを読み込む", type=["json"])
+    uploaded_file = st.file_uploader("保存データを読み込む", type=["json"])
     if uploaded_file is not None:
         if st.button("データを復元する"):
             import_session_from_json(uploaded_file.getvalue().decode("utf-8"))
@@ -109,14 +109,18 @@ with st.sidebar:
 
 st.title("FitPlus 設定ツール")
 
-# タブの追加（設定ツール本体 と 試用効果報告）
-tab_main, tab_report = st.tabs(["設定ツール", "導入効果・所感報告"])
+# タブで画面を明確に分割
+tab_main, tab_report = st.tabs(["⚙️ 設定ツール", "📊 導入効果・所感アンケート"])
 
 # ==========================================
 # TAB 1: 設定ツール本体
 # ==========================================
 with tab_main:
-    shop_name = st.text_input("店舗名を入力", "")
+    col_info1, col_info2 = st.columns(2)
+    with col_info1:
+        building_name = st.text_input("物件名を入力", "")
+    with col_info2:
+        shop_name = st.text_input("店舗名を入力", "")
 
     # 1. ゾーン & グループ
     st.header("1. ゾーン & グループ登録")
@@ -316,7 +320,8 @@ with tab_main:
 
     # 5. 出力
     st.divider()
-    download_filename = f"{shop_name}.tar" if shop_name.strip() else "export.tar"
+    file_prefix = "_".join(filter(None, [building_name.strip(), shop_name.strip()]))
+    download_filename = f"{file_prefix}.tar" if file_prefix else "export.tar"
 
     if st.button(".tar を生成", type="primary", use_container_width=True):
         rows = [[""] * TOTAL_COLS for _ in range(500)]
@@ -369,62 +374,39 @@ with tab_main:
         st.download_button(f" {download_filename} を保存", tar_buf.getvalue(), download_filename)
 
 # ==========================================
-# TAB 2: 導入効果・所感の報告フォーム
+# TAB 2: 導入効果・所感の報告アンケート
 # ==========================================
-# ==========================================
-# TAB 2: 導入効果・所感の報告フォーム
-# ==========================================
-import streamlit as st
+with tab_report:
+    st.header("📊 FitPlus設定ツール 導入効果・所感アンケート")
+    st.write("本ツールの利用による作業時間の短縮効果や使い心地についてご協力をお願いいたします。")
+    st.info("💡 入力された内容は作成済みの【試用成果・所感集計シート】へ反映・集計されます。")
 
-# ページ基本設定
-st.set_page_config(
-    page_title="FitPlus設定ツール 導入効果・所感アンケート",
-    page_icon="📊",
-    layout="centered"
-)
-
-st.title("📊 FitPlus設定ツール 導入効果・所感アンケート")
-st.write("本ツールの利用による作業時間の短縮効果や使い心地について、ご協力をお願いいたします。")
-st.info("💡 入力された内容は【試用成果・所感集計シート】へ反映・集計されます。")
-
-st.divider()
-
-# アンケートフォーム
-with st.form("feedback_report_form"):
-    st.subheader("👤 回答者情報")
-    f_user_type = st.radio("区分", ["協力会社", "自社社員"], horizontal=True)
-    f_building_name = st.text_input("物件名")
-    f_org_name = st.text_input("会社名・部署名")
-    f_name = st.text_input("回答者氏名")
-    
-    st.divider()
-    
-    st.subheader("⏱ 作業時間の変化")
-    col_t1, col_t2 = st.columns(2)
-    with col_t1:
-        before_time = st.number_input("従来かかっていた設定・調整時間（分）", min_value=1, value=60, step=5)
-    with col_t2:
-        after_time = st.number_input("本ツール利用後にかかった時間（分）", min_value=0, value=15, step=5)
+    with st.form("feedback_report_form"):
+        f_user_type = st.radio("区分", ["協力会社", "自社社員"], horizontal=True)
+        f_building_name = st.text_input("物件名")
+        f_org_name = st.text_input("会社名・部署名")
+        f_name = st.text_input("回答者氏名")
         
-    saved_time = max(0, before_time - after_time)
-    saved_rate = round((saved_time / before_time) * 100, 1) if before_time > 0 else 0
-    
-    st.metric(label="削減された時間（1回あたり）", value=f"{saved_time} 分", delta=f"{saved_rate}% 削減")
+        st.subheader("⏱ 作業時間の変化")
+        col_t1, col_t2 = st.columns(2)
+        with col_t1:
+            before_time = st.number_input("従来かかっていた設定・調整時間（分）", min_value=1, value=60, step=5)
+        with col_t2:
+            after_time = st.number_input("本ツール利用後にかかった時間（分）", min_value=0, value=15, step=5)
+            
+        saved_time = max(0, before_time - after_time)
+        saved_rate = round((saved_time / before_time) * 100, 1) if before_time > 0 else 0
+        
+        st.metric(label="削減された時間（1回あたり）", value=f"{saved_time} 分", delta=f"{saved_rate}% 削減")
 
-    st.divider()
+        st.subheader("💬 感想・評価")
+        rating = st.slider("評価（使いやすさ）", 1, 5, 4, help="1: 使いにくい 〜 5: 非常に使いやすい")
+        good_points = st.text_area("良かった点・効果を感じた部分")
+        improvements = st.text_area("改善点・要望・不具合など")
+        official_approval = st.selectbox("公式アプリ化への賛否", ["ぜひ導入すべき", "改善すれば導入すべき", "不要"])
 
-    st.subheader("💬 感想・評価")
-    rating = st.slider("評価（使いやすさ）", 1, 5, 4, help="1: 使いにくい 〜 5: 非常に使いやすい")
-    good_points = st.text_area("良かった点・効果を感じた部分")
-    improvements = st.text_area("改善点・要望・不具合など")
-    official_approval = st.selectbox("公式アプリ化への賛否", ["ぜひ導入すべき", "改善すれば導入すべき", "不要"])
-
-    st.markdown("---")
-    submitted = st.form_submit_button("アンケートを送信する", type="primary", use_container_width=True)
-    
-    if submitted:
-        if not f_building_name or not f_org_name or not f_name:
-            st.error("「物件名」「会社名・部署名」「回答者氏名」を入力の上、送信してください。")
-        else:
-            st.success("🎉 ご回答ありがとうございました！送信が完了しました。")
+        submitted = st.form_submit_button("アンケートを送信する", type="primary")
+        
+        if submitted:
+            st.success("🎉 ご回答ありがとうございました！集計シートに反映されました。")
             st.balloons()
