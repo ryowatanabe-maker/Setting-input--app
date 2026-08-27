@@ -427,24 +427,24 @@ with tab_report:
             if not f_org_name or not f_name or not f_shop_name:
                 st.error("「店舗名」「会社名・部署名」「回答者氏名」を入力のうえ、送信してください。")
             else:
-                # 解決ポイント: 日付をGoogleフォームが要求する複数キー(タプル形式)に分解
-                form_payload = [
-                    (f"{ENTRY_DATE}_year", str(f_date.year)),
-                    (f"{ENTRY_DATE}_month", str(f_date.month)),
-                    (f"{ENTRY_DATE}_day", str(f_date.day)),
-                    (ENTRY_USER_TYPE, f_user_type),
-                    (ENTRY_ORG_NAME, f_org_name),
-                    (ENTRY_NAME, f_name),
-                    (ENTRY_SHOP_NAME, f_shop_name),
-                    (ENTRY_BEFORE_TIME, str(before_time)),
-                    (ENTRY_AFTER_TIME, str(after_time)),
-                    (ENTRY_SAVED_TIME, str(saved_time)),
-                    (ENTRY_SAVED_RATE, f"{saved_rate}％"),
-                    (ENTRY_RATING, str(rating)),
-                    (ENTRY_GOOD_POINTS, good_points),
-                    (ENTRY_IMPROVEMENTS, improvements),
-                    (ENTRY_APPROVAL, official_approval)
-                ]
+                # 辞書型（dict）で全項目を確実に定義して送信
+                form_payload = {
+                    f"{ENTRY_DATE}_year": str(f_date.year),
+                    f"{ENTRY_DATE}_month": str(f_date.month),
+                    f"{ENTRY_DATE}_day": str(f_date.day),
+                    ENTRY_USER_TYPE: f_user_type,
+                    ENTRY_ORG_NAME: f_org_name,
+                    ENTRY_NAME: f_name,
+                    ENTRY_SHOP_NAME: f_shop_name,
+                    ENTRY_BEFORE_TIME: str(before_time),
+                    ENTRY_AFTER_TIME: str(after_time),
+                    ENTRY_SAVED_TIME: str(saved_time),
+                    ENTRY_SAVED_RATE: f"{saved_rate}％",
+                    ENTRY_RATING: str(rating),
+                    ENTRY_GOOD_POINTS: good_points,
+                    ENTRY_IMPROVEMENTS: improvements,
+                    ENTRY_APPROVAL: official_approval
+                }
 
                 try:
                     res = requests.post(FORM_URL, data=form_payload)
@@ -453,6 +453,6 @@ with tab_report:
                     else:
                         st.error(f"送信時にエラーが発生しました (HTTP {res.status_code})。")
                         with st.expander("送信データ詳細"):
-                            st.write(dict(form_payload))
+                            st.json(form_payload)
                 except Exception as e:
                     st.error(f"通信エラーが発生しました: {e}")
