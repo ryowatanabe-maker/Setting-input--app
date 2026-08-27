@@ -17,6 +17,7 @@ ENTRY_SHOP_NAME = "entry.389335091"        # 店舗名
 ENTRY_BEFORE_TIME = "entry.1027812746"     # 従来時間（分）
 ENTRY_AFTER_TIME = "entry.800808262"       # アプリ利用後時間（分）
 ENTRY_SAVED_TIME = "entry.912412104"       # 削減時間（分）
+ENTRY_SAVED_RATE = "entry.453043313"       # 時間削減率（%）
 ENTRY_RATING = "entry.389617408"           # 評価（1〜5）
 ENTRY_GOOD_POINTS = "entry.93002036"       # 良かった点・効果
 ENTRY_IMPROVEMENTS = "entry.969188001"     # 改善点・要望
@@ -414,7 +415,6 @@ with tab_report:
         good_points = st.text_area("良かった点・効果（感想）")
         improvements = st.text_area("改善点・要望（自由記述）")
         
-        # ラジオボタンの「」を含む文字列をGoogleフォームの選択肢に完全一致させる
         official_approval = st.radio(
             "公式化への賛否", 
             ["「ぜひ導入すべき」", "改善すれば導入すべき", "不要"],
@@ -427,7 +427,7 @@ with tab_report:
             if not f_org_name or not f_name or not f_shop_name:
                 st.error("「店舗名」「会社名・部署名」「回答者氏名」を入力のうえ、送信してください。")
             else:
-                # Googleフォームの日付項目対応 (個別の年月日フォーマット)
+                # フォーム送信データの組み立て（entry.453043313 へ時間削減率を送信）
                 form_payload = {
                     f"{ENTRY_DATE}_year": str(f_date.year),
                     f"{ENTRY_DATE}_month": str(f_date.month),
@@ -440,6 +440,7 @@ with tab_report:
                     ENTRY_BEFORE_TIME: str(before_time),
                     ENTRY_AFTER_TIME: str(after_time),
                     ENTRY_SAVED_TIME: str(saved_time),
+                    ENTRY_SAVED_RATE: f"{saved_rate}％",
                     ENTRY_RATING: str(rating),
                     ENTRY_GOOD_POINTS: good_points,
                     ENTRY_IMPROVEMENTS: improvements,
@@ -450,10 +451,8 @@ with tab_report:
                     res = requests.post(FORM_URL, data=form_payload)
                     if res.status_code in [200, 302]:
                         st.success("🎉 ご回答ありがとうございました！スプレッドシートへ直接記録されました。")
-                        st.balloons()
                     else:
                         st.error(f"送信時にエラーが発生しました (HTTP {res.status_code})。")
-                        # 万が一400が出る場合、どのデータ形式で拒否されたかを確認用表示
                         with st.expander("送信データ詳細"):
                             st.json(form_payload)
                 except Exception as e:
