@@ -9,9 +9,11 @@ from datetime import datetime, timedelta, time
 # --- Googleフォーム自動連携用設定 ---
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSc-r68lK0S5K94FZB7XWTogZqzcZNwmHd8OR2_M23gIwqRsXA/formResponse"
 
+ENTRY_DATE = "entry.1606434213"            # 日付
 ENTRY_USER_TYPE = "entry.91556552"         # 区分
 ENTRY_ORG_NAME = "entry.761803893"         # 会社名・部署名
 ENTRY_NAME = "entry.1373225987"            # 回答者氏名
+ENTRY_SHOP_NAME = "entry.389335091"        # 店舗名
 ENTRY_BEFORE_TIME = "entry.1027812746"     # 従来時間（分）
 ENTRY_AFTER_TIME = "entry.800808262"       # アプリ利用後時間（分）
 ENTRY_SAVED_TIME = "entry.912412104"       # 削減時間（分）
@@ -127,7 +129,7 @@ tab_main, tab_report = st.tabs(["⚙️ 設定ツール", "📊 導入効果・�
 # TAB 1: 設定ツール本体
 # ==========================================
 with tab_main:
-    shop_name = st.text_input("店舗名を入力", "")
+    shop_name = st.text_input("店舗名を入力", "", key="main_shop_name")
 
     # 1. ゾーン & グループ
     st.header("1. ゾーン & グループ登録")
@@ -387,9 +389,11 @@ with tab_report:
     st.info("💡 入力された内容はスプレッドシートへ自動反映・集計されます。")
 
     with st.form("feedback_report_form"):
+        f_date = st.date_input("利用日", datetime.today())
         f_user_type = st.radio("区分", ["自社社員", "協力会社"], horizontal=True)
         f_org_name = st.text_input("会社名・部署名")
         f_name = st.text_input("回答者氏名")
+        f_shop_name = st.text_input("店舗名")
         
         st.subheader("⏱ 作業時間の変化")
         col_t1, col_t2 = st.columns(2)
@@ -410,14 +414,16 @@ with tab_report:
         submitted = st.form_submit_button("アンケートを送信する", type="primary")
         
         if submitted:
-            if not f_org_name or not f_name:
-                st.error("「会社名・部署名」と「回答者氏名」を入力のうえ、送信してください。")
+            if not f_org_name or not f_name or not f_shop_name:
+                st.error("「店舗名」「会社名・部署名」「回答者氏名」を入力のうえ、送信してください。")
             else:
-                # フォーム送信データの組み立て
+                # フォーム送信データの組み立て（新URLの全entry ID対応）
                 form_payload = {
+                    ENTRY_DATE: f_date.strftime("%Y-%m-%d"),
                     ENTRY_USER_TYPE: f_user_type,
                     ENTRY_ORG_NAME: f_org_name,
                     ENTRY_NAME: f_name,
+                    ENTRY_SHOP_NAME: f_shop_name,
                     ENTRY_BEFORE_TIME: str(before_time),
                     ENTRY_AFTER_TIME: str(after_time),
                     ENTRY_SAVED_TIME: str(saved_time),
