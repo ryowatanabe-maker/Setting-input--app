@@ -6,8 +6,8 @@ import io
 import tarfile
 from datetime import datetime, timedelta, time
 
-# --- Google Apps Script (GAS) 連携用 URL ---
-GAS_WEB_APP_URL = "https://script.google.com/macros/s/1HSG7EcxFvRWpRwsmYD4k5vzN7F_CKX9FTAZ420ORGJv56cQD2Zd0IiYy/exec"
+# --- ご提示いただいた GAS 連携用 URL ---
+GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxYaFY8xF5S8-g24YyjdqGdvn-nyNVBkLGqGThP9IA9xBGa_3pqtIzT_k1HAbB3PUHqXQ/exec"
 
 # --- スロット上限の修正（公式仕様に準拠） ---
 MAX_SLOTS = 100
@@ -24,6 +24,7 @@ IDX_PERIOD_NAME = IDX_ZONE_TS + 10
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["(空白)", "毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
+# 最初から左メニューを開いた状態にする設定
 st.set_page_config(page_title="FitPlus Setting Tool", layout="wide", initial_sidebar_state="expanded")
 
 # セッション管理
@@ -41,6 +42,7 @@ def delete_slot_by_uid(tl_idx, slot_uid):
         s for s in st.session_state.timelines[tl_idx]['slots'] if s['uid'] != slot_uid
     ]
 
+# --- 途中保存・読込機能 ---
 def export_session_to_json():
     export_data = {
         "z_list": st.session_state.z_list,
@@ -109,6 +111,7 @@ with st.sidebar:
 
 st.title("FitPlus 設定ツール")
 
+# タブで画面を分割
 tab_main, tab_report = st.tabs(["⚙️ 設定ツール", "📊 導入効果・所感アンケート"])
 
 # ==========================================
@@ -410,7 +413,7 @@ with tab_report:
             if not f_org_name or not f_name or not f_shop_name:
                 st.error("「店舗名」「会社名・部署名」「回答者氏名」を入力のうえ、送信してください。")
             else:
-                # GAS送信用JSONデータ
+                # GAS連携用JSONデータ構造
                 payload = {
                     "date": f_date.strftime("%Y-%m-%d"),
                     "user_type": f_user_type,
