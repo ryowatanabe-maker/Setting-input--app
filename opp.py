@@ -81,12 +81,12 @@ def import_session_from_json(json_str):
 
 # サイドバー設定 (セーブ・ロード・リセット)
 with st.sidebar:
-    st.header("セーブ / ロード")
+    st.header("途中保存 / 読み込み")
     st.write("途中から再開するための専用ファイル(.json)を保存・読み込みします。")
     
     save_data = export_session_to_json()
     st.download_button(
-        label="セーブデータをダウンロード",
+        label="保存データをダウンロード",
         data=save_data,
         file_name=f"fitplus_save_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
         mime="application/json",
@@ -95,7 +95,7 @@ with st.sidebar:
     
     st.divider()
     
-    uploaded_file = st.file_uploader("セーブデータを読み込む", type=["json"])
+    uploaded_file = st.file_uploader("データを読み込む", type=["json"])
     if uploaded_file is not None:
         if st.button("データを復元する"):
             import_session_from_json(uploaded_file.getvalue().decode("utf-8"))
@@ -110,7 +110,7 @@ with st.sidebar:
 st.title("FitPlus 設定ツール")
 
 # タブの追加（設定ツール本体 と 試用効果報告）
-tab_main, tab_report = st.tabs(["⚙️ 設定ツール", "📊 導入効果・所感報告（９月集計用）"])
+tab_main, tab_report = st.tabs(["設定ツール", "導入効果・所感報告"])
 
 # ==========================================
 # TAB 1: 設定ツール本体
@@ -378,8 +378,8 @@ with tab_report:
 
     with st.form("feedback_report_form"):
         f_user_type = st.radio("区分", ["協力会社", "自社社員"], horizontal=True)
-        f_org_name = st.text_input("会社名・部署名", placeholder="例: 〇〇建設 現場第一班 / 西日本支店 営業課")
-        f_name = st.text_input("回答者氏名", placeholder="例: 山田 太郎")
+        f_org_name = st.text_input("会社名・部署名", placeholder=")
+        f_name = st.text_input("回答者氏名", placeholder=)
         
         st.subheader("⏱ 作業時間の変化")
         col_t1, col_t2 = st.columns(2)
