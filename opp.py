@@ -374,36 +374,57 @@ with tab_main:
 # ==========================================
 # TAB 2: 導入効果・所感の報告フォーム
 # ==========================================
-with tab_report:
-    st.header("📊 FitPlus設定ツール 導入効果・所感報告")
-    st.write("本ツールの利用による作業時間の短縮効果や使い心地についてご協力をお願いいたします。")
-    st.info("💡 入力された内容は作成済みの【試用成果・所感集計シート】へ反映・集計されます。")
+import streamlit as st
 
-    with st.form("feedback_report_form"):
-        f_user_type = st.radio("区分", ["協力会社", "自社社員"], horizontal=True)
-        f_org_name = st.text_input("会社名・部署名")
-        f_name = st.text_input("回答者氏名")
-        
-        st.subheader("⏱ 作業時間の変化")
-        col_t1, col_t2 = st.columns(2)
-        with col_t1:
-            before_time = st.number_input("従来かかっていた設定・調整時間（分）", min_value=1, value=60, step=5)
-        with col_t2:
-            after_time = st.number_input("本ツール利用後にかかった時間（分）", min_value=0, value=15, step=5)
-            
-        saved_time = max(0, before_time - after_time)
-        saved_rate = round((saved_time / before_time) * 100, 1) if before_time > 0 else 0
-        
-        st.metric(label="削減された時間", value=f"{saved_time} 分", delta=f"{saved_rate}% 削減")
+# ページ基本設定
+st.set_page_config(
+    page_title="FitPlus設定ツール 導入効果・所感アンケート",
+    page_icon="📊",
+    layout="centered"
+)
 
-        st.subheader("💬 感想・評価")
-        rating = st.slider("評価（使いやすさ）", 1, 5, 4, help="1: 使いにくい 〜 5: 非常に使いやすい")
-        good_points = st.text_area("良かった点・効果を感じた部分")
-        improvements = st.text_area("改善点・要望・不具合など")
-        official_approval = st.selectbox("公式アプリ化への賛否", ["ぜひ導入すべき", "改善すれば導入すべき", "不要"])
+st.title("📊 FitPlus設定ツール 導入効果・所感アンケート")
+st.write("本ツールの利用による作業時間の短縮効果や使い心地について、ご協力をお願いいたします。")
+st.info("💡 入力された内容は【試用成果・所感集計シート】へ反映・集計されます。")
 
-        submitted = st.form_submit_button("報告を送信する", type="primary")
+st.divider()
+
+# アンケートフォーム
+with st.form("feedback_report_form"):
+    st.subheader("👤 回答者情報")
+    f_user_type = st.radio("区分", ["協力会社", "自社社員"], horizontal=True)
+    f_building_name = st.text_input("物件名")
+    f_org_name = st.text_input("会社名・部署名")
+    f_name = st.text_input("回答者氏名")
+    
+    st.divider()
+    
+    st.subheader("⏱ 作業時間の変化")
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        before_time = st.number_input("従来かかっていた設定・調整時間（分）", min_value=1, value=60, step=5)
+    with col_t2:
+        after_time = st.number_input("本ツール利用後にかかった時間（分）", min_value=0, value=15, step=5)
         
-        if submitted:
-            st.success("🎉 ご報告ありがとうございます！集計シートに送信・記録されました。")
+    saved_time = max(0, before_time - after_time)
+    saved_rate = round((saved_time / before_time) * 100, 1) if before_time > 0 else 0
+    
+    st.metric(label="削減された時間（1回あたり）", value=f"{saved_time} 分", delta=f"{saved_rate}% 削減")
+
+    st.divider()
+
+    st.subheader("💬 感想・評価")
+    rating = st.slider("評価（使いやすさ）", 1, 5, 4, help="1: 使いにくい 〜 5: 非常に使いやすい")
+    good_points = st.text_area("良かった点・効果を感じた部分")
+    improvements = st.text_area("改善点・要望・不具合など")
+    official_approval = st.selectbox("公式アプリ化への賛否", ["ぜひ導入すべき", "改善すれば導入すべき", "不要"])
+
+    st.markdown("---")
+    submitted = st.form_submit_button("アンケートを送信する", type="primary", use_container_width=True)
+    
+    if submitted:
+        if not f_building_name or not f_org_name or not f_name:
+            st.error("「物件名」「会社名・部署名」「回答者氏名」を入力の上、送信してください。")
+        else:
+            st.success("🎉 ご回答ありがとうございました！送信が完了しました。")
             st.balloons()
