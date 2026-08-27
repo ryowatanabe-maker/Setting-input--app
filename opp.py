@@ -421,7 +421,7 @@ with tab_report:
             if not f_org_name or not f_name or not f_shop_name:
                 st.error("「店舗名」「会社名・部署名」「回答者氏名」を入力のうえ、送信してください。")
             else:
-                # フォーム送信データの組み立て（新判明した全10項目を完全連携）
+                # フォーム送信データの組み立て（全12要素）
                 form_payload = {
                     ENTRY_DATE: f_date.strftime("%Y-%m-%d"),
                     ENTRY_USER_TYPE: f_user_type,
@@ -439,10 +439,11 @@ with tab_report:
 
                 try:
                     res = requests.post(FORM_URL, data=form_payload)
-                    if res.status_code == 200:
+                    # ステータスコードが200（成功）または成功画面リダイレクト(302等)で成功と判定
+                    if res.status_code in [200, 302]:
                         st.success("🎉 ご回答ありがとうございました！スプレッドシートへ直接記録されました。")
                         st.balloons()
                     else:
-                        st.error("送信時にエラーが発生しました。設定を確認してください。")
+                        st.error(f"送信時にエラーが発生しました。(HTTP {res.status_code}) Googleフォームの設定（ログイン制限等）をご確認ください。")
                 except Exception as e:
                     st.error(f"通信エラーが発生しました: {e}")
