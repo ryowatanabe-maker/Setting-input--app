@@ -378,8 +378,8 @@ with tab_report:
 
     with st.form("feedback_report_form"):
         f_user_type = st.radio("区分", ["協力会社", "自社社員"], horizontal=True)
-        f_org_name = st.text_input("会社名・部署名", placeholder=")
-        f_name = st.text_input("回答者氏名", placeholder=")
+        f_org_name = st.text_input("会社名・部署名", placeholder=)
+        f_name = st.text_input("回答者氏名", placeholder=)
         
         st.subheader("⏱ 作業時間の変化")
         col_t1, col_t2 = st.columns(2)
