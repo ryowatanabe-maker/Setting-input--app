@@ -6,7 +6,7 @@ import io
 import tarfile
 from datetime import datetime, timedelta, time
 
-# --- ご提示いただいた GAS 連携用 URL ---
+# --- Google Apps Script (GAS) 連携用 URL ---
 GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxYaFY8xF5S8-g24YyjdqGdvn-nyNVBkLGqGThP9IA9xBGa_3pqtIzT_k1HAbB3PUHqXQ/exec"
 
 # --- スロット上限の修正（公式仕様に準拠） ---
@@ -24,7 +24,6 @@ IDX_PERIOD_NAME = IDX_ZONE_TS + 10
 GROUP_TYPES = {"調光": "1ch", "調光調色": "2ch", "Synca": "3ch", "Synca Bright": "fresh 3ch"}
 DAY_OPTIONS = ["(空白)", "毎日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"]
 
-# 最初から左メニューを開いた状態にする設定
 st.set_page_config(page_title="FitPlus Setting Tool", layout="wide", initial_sidebar_state="expanded")
 
 # セッション管理
@@ -140,15 +139,17 @@ with tab_main:
             gn, gt = st.text_input("グループ名", max_chars=32), st.selectbox("タイプ", list(GROUP_TYPES.keys()))
             gz = st.selectbox("所属ゾーン", options=[""] + vz)
             if st.button("グループ保存") and gn and gz:
+                # 修正ポイント: 同一ゾーン内でのグループ件数を取得（同名・別ゾーンは除外）
                 groups_in_zone = len([g for g in st.session_state.g_list if g["ゾ"] == gz and g["名"] != gn])
                 if gn == "0":
                     st.error("「0」のみの名称は登録できません。")
-                elif len([g for g in st.session_state.g_list if g["名"] != gn]) >= 140:
+                elif len(st.session_state.g_list) >= 140 and not any(g["名"] == gn and g["ゾ"] == gz for g in st.session_state.g_list):
                     st.error("グループの登録上限（全体で140個）に達しています。")
                 elif groups_in_zone >= 50:
                     st.error(f"ゾーン「{gz}」のグループ登録上限（50個）に達しています。")
                 else:
-                    st.session_state.g_list = [g for g in st.session_state.g_list if g["名"] != gn]
+                    # 修正ポイント: 「グループ名」と「所属ゾーン」の両方が一致するものだけを置換対象とし、ゾーンが違えば別グループとして独立保存
+                    st.session_state.g_list = [g for g in st.session_state.g_list if not (g["名"] == gn and g["ゾ"] == gz)]
                     st.session_state.g_list.append({"名": gn, "型": gt, "ゾ": gz}); st.rerun()
 
     with c2:
@@ -173,13 +174,13 @@ with tab_main:
         scene_tmp = []
         for g in [g for g in st.session_state.g_list if g["ゾ"] == sz_in]:
             with st.expander(f"{g['名']} 設定"):
-                dim = st.slider("調光%", 0, 100, 100, key=f"d_{g['名']}")
+                dim = st.slider("調光%", 0, 100, 100, key=f"d_{g['名']}_{sz_in}")
                 ex, ey, kel = "", "", "4000"
                 if "Synca" in g['型']:
-                    m = st.radio("設定", ["パレット", "調色"], horizontal=True, key=f"m_{g['名']}")
-                    if m == "パレット": ex, ey = st.slider("演出X", 1, 11, 6, key=f"x_{g['名']}"), st.slider("演出Y", 1, 11, 6, key=f"y_{g['名']}")
-                    else: kel = st.text_input("色温度", "4000", key=f"ks_{g['名']}")
-                elif g['型'] == "調光調色": kel = st.text_input("色温度", "4000", key=f"k_{g['名']}")
+                    m = st.radio("設定", ["パレット", "調色"], horizontal=True, key=f"m_{g['名']}_{sz_in}")
+                    if m == "パレット": ex, ey = st.slider("演出X", 1, 11, 6, key=f"x_{g['名']}_{sz_in}"), st.slider("演出Y", 1, 11, 6, key=f"y_{g['名']}_{sz_in}")
+                    else: kel = st.text_input("色温度", "4000", key=f"ks_{g['名']}_{sz_in}")
+                elif g['型'] == "調光調色": kel = st.text_input("色温度", "4000", key=f"k_{g['名']}_{sz_in}")
                 
                 if kel != "":
                     try:
@@ -413,7 +414,6 @@ with tab_report:
             if not f_org_name or not f_name or not f_shop_name:
                 st.error("「店舗名」「会社名・部署名」「回答者氏名」を入力のうえ、送信してください。")
             else:
-                # GAS連携用JSONデータ構造
                 payload = {
                     "date": f_date.strftime("%Y-%m-%d"),
                     "user_type": f_user_type,
